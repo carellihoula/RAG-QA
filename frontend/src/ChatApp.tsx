@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { LogOut, Upload, X, MessageSquare, FileText } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ModeToggle } from '@/components/ModeToggle'
+import { cn } from '@/lib/utils'
 import {
-  listDocuments,
-  uploadDocument,
-  deleteDocument,
-  sendMessage,
-  clearSession,
-  getChunks,
+  listDocuments, uploadDocument, deleteDocument,
+  sendMessage, clearSession, getChunks,
 } from './api'
 import type { Document, Chunk, Message } from './types'
 
@@ -114,103 +117,166 @@ export default function ChatApp() {
   }
 
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <div className="sidebar-top">
-          <h1 className="logo">RAG Q&A</h1>
-          <button className="btn-logout" onClick={logout} title="Log out">⏻</button>
+    <div className="flex h-screen bg-background overflow-hidden">
+      {/* Sidebar — always dark regardless of theme */}
+      <aside className="w-64 flex-shrink-0 flex flex-col bg-zinc-900 p-4 gap-4 border-r border-zinc-800">
+        <div className="flex items-center gap-1.5">
+          <h1 className="font-bold tracking-wide text-white flex-1 text-base">RAG Q&A</h1>
+          <ModeToggle className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800" />
+          <Button
+            variant="ghost" size="icon"
+            onClick={logout}
+            title="Log out"
+            className="h-8 w-8 text-zinc-400 hover:text-red-400 hover:bg-zinc-800"
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
         </div>
 
-        <div className="upload-area">
-          <button className="btn-upload" onClick={() => fileRef.current?.click()} disabled={uploading}>
-            {uploading ? 'Uploading…' : '+ Upload PDF'}
-          </button>
-          <input ref={fileRef} type="file" accept=".pdf" hidden onChange={handleUpload} />
-        </div>
+        <Button
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white h-9 text-sm"
+        >
+          <Upload className="mr-1.5 h-3.5 w-3.5" />
+          {uploading ? 'Uploading…' : 'Upload PDF'}
+        </Button>
+        <input ref={fileRef} type="file" accept=".pdf" hidden onChange={handleUpload} />
 
-        <div className="doc-list">
-          {documents.length === 0 && <p className="empty">No documents yet.</p>}
+        <div className="flex-1 overflow-y-auto flex flex-col gap-0.5 -mx-1">
+          {documents.length === 0 && (
+            <p className="text-xs text-zinc-600 text-center mt-4 px-2">No documents yet.</p>
+          )}
           {documents.map(doc => (
             <div
               key={doc.doc_id}
-              className={`doc-item ${selectedDoc?.doc_id === doc.doc_id ? 'active' : ''}`}
+              className={cn(
+                'group flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer transition-colors',
+                selectedDoc?.doc_id === doc.doc_id
+                  ? 'bg-zinc-700 text-white'
+                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+              )}
               onClick={() => selectDocument(doc)}
             >
-              <span className="doc-name" title={doc.filename}>{doc.filename}</span>
+              <FileText className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />
+              <span className="truncate flex-1 text-xs">{doc.filename}</span>
               <button
-                className="btn-delete"
+                className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all p-0.5 flex-shrink-0"
                 onClick={e => { e.stopPropagation(); handleDelete(doc.doc_id) }}
-              >✕</button>
+              >
+                <X className="h-3 w-3" />
+              </button>
             </div>
           ))}
         </div>
       </aside>
 
-      <main className="chat">
+      {/* Main content */}
+      <main className="flex-1 flex flex-col overflow-hidden">
         {!selectedDoc ? (
-          <div className="placeholder">
-            <p>Select or upload a PDF to start chatting.</p>
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground select-none">
+            <MessageSquare className="h-12 w-12 opacity-10" />
+            <p className="text-sm">Select or upload a PDF to start chatting.</p>
           </div>
         ) : (
           <>
-            <header className="chat-header">
-              <span className="doc-title">{selectedDoc.filename}</span>
-              <div className="tabs">
-                <button className={tab === 'chat' ? 'tab active' : 'tab'} onClick={() => switchTab('chat')}>Chat</button>
-                <button className={tab === 'chunks' ? 'tab active' : 'tab'} onClick={() => switchTab('chunks')}>Chunks</button>
-              </div>
+            <header className="flex items-center gap-3 px-5 py-2.5 border-b bg-card flex-shrink-0">
+              <span className="font-medium text-sm flex-1 truncate">{selectedDoc.filename}</span>
+              <Tabs value={tab} onValueChange={v => switchTab(v as 'chat' | 'chunks')}>
+                <TabsList className="h-8">
+                  <TabsTrigger value="chat" className="text-xs h-7 px-3">Chat</TabsTrigger>
+                  <TabsTrigger value="chunks" className="text-xs h-7 px-3">Chunks</TabsTrigger>
+                </TabsList>
+              </Tabs>
               {tab === 'chat' && sessionId && (
-                <button className="btn-clear" onClick={() => selectDocument(selectedDoc)}>Clear chat</button>
+                <Button variant="outline" size="sm" className="h-7 text-xs"
+                  onClick={() => selectDocument(selectedDoc)}>
+                  Clear chat
+                </Button>
               )}
             </header>
 
             {tab === 'chat' && (
               <>
-                <div className="messages">
+                <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
                   {messages.map((msg, i) => (
-                    <div key={i} className={`message ${msg.role}`}>
-                      <p>{msg.content}</p>
+                    <div
+                      key={i}
+                      className={cn(
+                        'max-w-2xl rounded-2xl px-4 py-3 text-sm leading-relaxed animate-fade-in',
+                        msg.role === 'user'
+                          ? 'bg-primary text-primary-foreground self-end rounded-br-sm ml-16'
+                          : 'bg-card border self-start rounded-bl-sm mr-16'
+                      )}
+                    >
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
                       {msg.sources && msg.sources.length > 0 && (
-                        <details className="sources">
-                          <summary>Sources ({msg.sources.length})</summary>
-                          {msg.sources.map((s, j) => (
-                            <div key={j} className="source-chunk">
-                              <strong>Page {s.page}</strong>
-                              <p>{s.content}</p>
-                            </div>
-                          ))}
+                        <details className="mt-3 text-xs">
+                          <summary className="cursor-pointer font-semibold opacity-60 hover:opacity-100 transition-opacity list-none flex items-center gap-1">
+                            <span>▸</span> Sources ({msg.sources.length})
+                          </summary>
+                          <div className="mt-2 flex flex-col gap-2">
+                            {msg.sources.map((s, j) => (
+                              <div key={j} className="p-2.5 bg-muted rounded-lg border-l-2 border-primary/40">
+                                <Badge variant="outline" className="text-[10px] h-4 mb-1">Page {s.page}</Badge>
+                                <p className="text-muted-foreground leading-relaxed mt-1">{s.content}</p>
+                              </div>
+                            ))}
+                          </div>
                         </details>
                       )}
                     </div>
                   ))}
-                  {loading && <div className="message assistant thinking">Thinking…</div>}
-                  {error && <div className="error-msg">{error}</div>}
+
+                  {loading && (
+                    <div className="self-start bg-card border rounded-2xl rounded-bl-sm px-4 py-3.5 mr-16">
+                      <span className="flex gap-1.5 items-center">
+                        {[0, 150, 300].map(delay => (
+                          <span
+                            key={delay}
+                            style={{ animationDelay: `${delay}ms` }}
+                            className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce"
+                          />
+                        ))}
+                      </span>
+                    </div>
+                  )}
+
+                  {error && (
+                    <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
+                      {error}
+                    </div>
+                  )}
                   <div ref={bottomRef} />
                 </div>
 
-                <form className="input-bar" onSubmit={handleSend}>
-                  <input
+                <form className="flex gap-3 p-4 border-t bg-card flex-shrink-0" onSubmit={handleSend}>
+                  <Input
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     placeholder="Ask a question about this document…"
                     disabled={loading}
                   />
-                  <button type="submit" disabled={loading || !input.trim()}>Send</button>
+                  <Button type="submit" disabled={loading || !input.trim()}>Send</Button>
                 </form>
               </>
             )}
 
             {tab === 'chunks' && (
-              <div className="chunks-panel">
-                {chunksLoading && <p className="empty">Loading chunks…</p>}
-                {error && <div className="error-msg">{error}</div>}
+              <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3">
+                {chunksLoading && <p className="text-sm text-muted-foreground">Loading chunks…</p>}
+                {error && <p className="text-sm text-destructive">{error}</p>}
                 {!chunksLoading && chunks.length > 0 && (
                   <>
-                    <p className="chunks-count">{chunks.length} chunks indexed</p>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+                      {chunks.length} chunks indexed
+                    </p>
                     {chunks.map((chunk, i) => (
-                      <div key={i} className="chunk-card">
-                        <div className="chunk-page">Page {chunk.page}</div>
-                        <p className="chunk-content">{chunk.content}</p>
+                      <div key={i} className="rounded-lg border bg-card p-4">
+                        <Badge className="mb-2 text-[11px]">Page {chunk.page}</Badge>
+                        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                          {chunk.content}
+                        </p>
                       </div>
                     ))}
                   </>
