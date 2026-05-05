@@ -34,14 +34,14 @@ docker compose up --build
 
 ```
 ┌─────────────────┐        ┌──────────────────────────────────┐
-│  React frontend │ :3000  │  FastAPI backend            :8000 │
-│  (nginx)        │───────▶│                                   │
+│  React frontend │ :3000  │  FastAPI backend            :8000│
+│  (nginx)        │───────▶│                                  │
 │                 │        │  ┌─────────┐   ┌──────────────┐  │
 └─────────────────┘        │  │  FAISS  │   │  LangChain   │  │
                            │  │  index  │◀──│  RAG chain   │  │
                            │  └─────────┘   └──────┬───────┘  │
-                           │                       │           │
-                           └───────────────────────┼───────────┘
+                           │                       │          │
+                           └───────────────────────┼──────────┘
                                                    │
                                              OpenAI API
                                       (embeddings + chat)
@@ -53,13 +53,13 @@ docker compose up --build
 
 ## API endpoints
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| `POST` | `/api/v1/documents/` | Upload and index a PDF |
-| `GET` | `/api/v1/documents/` | List all indexed documents |
-| `DELETE` | `/api/v1/documents/{id}` | Delete a document and its index |
-| `POST` | `/api/v1/chat/` | Ask a question about a document |
-| `DELETE` | `/api/v1/chat/session/{sid}/{did}` | Clear a conversation session |
+| Method   | Route                              | Description                     |
+| -------- | ---------------------------------- | ------------------------------- |
+| `POST`   | `/api/v1/documents/`               | Upload and index a PDF          |
+| `GET`    | `/api/v1/documents/`               | List all indexed documents      |
+| `DELETE` | `/api/v1/documents/{id}`           | Delete a document and its index |
+| `POST`   | `/api/v1/chat/`                    | Ask a question about a document |
+| `DELETE` | `/api/v1/chat/session/{sid}/{did}` | Clear a conversation session    |
 
 ---
 
@@ -89,10 +89,10 @@ npm run dev   # runs on http://localhost:5173
 
 All RAG parameters can be tuned in `backend/app/config.py`:
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `chunk_size` | 1000 | Characters per chunk |
-| `chunk_overlap` | 200 | Overlap between chunks |
-| `retriever_k` | 4 | Number of chunks retrieved per query |
-| `embedding_model` | `text-embedding-3-small` | OpenAI embedding model |
-| `llm_model` | `gpt-4o-mini` | OpenAI chat model |
+| Parameter         | Default                  | Description                          |
+| ----------------- | ------------------------ | ------------------------------------ |
+| `chunk_size`      | 1000                     | Characters per chunk                 |
+| `chunk_overlap`   | 200                      | Overlap between chunks               |
+| `retriever_k`     | 4                        | Number of chunks retrieved per query |
+| `embedding_model` | `text-embedding-3-small` | OpenAI embedding model               |
+| `llm_model`       | `gpt-4o-mini`            | OpenAI chat model                    |

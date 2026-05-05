@@ -1,11 +1,12 @@
 import uuid
 import asyncio
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from app.services.rag_service import rag_service
 from app.services.document_service import DocumentService
+from app.services.auth_service import get_current_user
 from app.models.schemas import ChatRequest, ChatResponse
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter(prefix="/chat", tags=["chat"], dependencies=[Depends(get_current_user)])
 doc_service = DocumentService()
 
 

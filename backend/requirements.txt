@@ -12,3 +12,6 @@ pypdf==4.2.0
 
 python-dotenv==1.0.1
 aiofiles==23.2.1
+sqlalchemy==2.0.30
+passlib[argon2]
+python-jose[cryptography]==3.3.0

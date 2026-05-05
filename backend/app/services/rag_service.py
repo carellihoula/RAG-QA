@@ -139,6 +139,15 @@ class RAGService:
             session_id=session_id
         )
 
+    def get_chunks(self, doc_id: str) -> list[dict]:
+        """Returns all indexed chunks for a document, sorted by page."""
+        vectorstore = self._load_vectorstore(doc_id)
+        chunks = [
+            {"page": doc.metadata.get("page", 0) + 1, "content": doc.page_content}
+            for doc in vectorstore.docstore._dict.values()
+        ]
+        return sorted(chunks, key=lambda c: c["page"])
+
     def clear_session(self, session_id: str, doc_id: str) -> None:
         """Clears the memory of a session."""
         cache_key = f"{doc_id}:{session_id}"

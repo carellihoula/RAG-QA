@@ -1,10 +1,11 @@
 import asyncio
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from app.services.document_service import DocumentService
 from app.services.rag_service import rag_service
-from app.models.schemas import DocumentResponse, DocumentListItem
+from app.services.auth_service import get_current_user
+from app.models.schemas import DocumentResponse, DocumentListItem, ChunkItem
 
-router = APIRouter(prefix="/documents", tags=["documents"])
+router = APIRouter(prefix="/documents", tags=["documents"], dependencies=[Depends(get_current_user)])
 doc_service = DocumentService()
 
 
@@ -33,6 +34,16 @@ async def upload_document(file: UploadFile = File(...)):
 def list_documents():
     """Returns the list of all indexed documents."""
     return doc_service.list_documents()
+
+
+@router.get("/{doc_id}/chunks", response_model=list[ChunkItem])
+def get_document_chunks(doc_id: str):
+    """Returns all indexed chunks for a document."""
+    doc_service.get_pdf_path(doc_id)
+    try:
+        return rag_service.get_chunks(doc_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.delete("/{doc_id}", status_code=204)

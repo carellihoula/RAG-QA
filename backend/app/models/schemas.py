@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import datetime
 
@@ -37,6 +37,27 @@ class ChatResponse(BaseModel):
     answer: str
     sources: list[SourceChunk]
     session_id: str
+
+
+class ChunkItem(BaseModel):
+    page: int
+    content: str
+
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    email: str
 
 
 class ErrorResponse(BaseModel):
