@@ -1,0 +1,26 @@
+# Environnement Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Variables d'environnement (NE JAMAIS COMMITTER)
+.env
+
+# Données générées (trop lourdes pour Git)
+backend/data/uploads/
+backend/data/indexes/
+
+# Node / React
+frontend/node_modules/
+frontend/dist/
+
+# Docker
+*.log
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
