@@ -7,16 +7,8 @@ import {
   sendMessage,
   clearSession,
   getChunks,
-  type Document,
-  type Chunk,
-  type Source,
 } from './api'
-
-interface Message {
-  role: 'user' | 'assistant'
-  content: string
-  sources?: Source[]
-}
+import type { Document, Chunk, Message } from './types'
 
 export default function ChatApp() {
   const navigate = useNavigate()

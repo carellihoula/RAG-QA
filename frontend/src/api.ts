@@ -1,29 +1,8 @@
+import type { Document, Chunk, Source, ChatResponse, AuthResponse } from './types'
+
+export type { Document, Chunk, Source, ChatResponse, AuthResponse }
+
 const BASE = '/api/v1'
-
-export interface Document {
-  doc_id: string
-  filename: string
-}
-
-export interface Chunk {
-  page: number
-  content: string
-}
-
-export interface Source {
-  page: number
-  content: string
-}
-
-export interface ChatResponse {
-  session_id: string
-  answer: string
-  sources: Source[]
-}
-
-export interface AuthResponse {
-  access_token: string
-}
 
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const token = localStorage.getItem('token')
