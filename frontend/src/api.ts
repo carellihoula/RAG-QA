@@ -1,6 +1,6 @@
-import type { Document, Chunk, Source, ChatResponse, AuthResponse } from './types'
+import type { Document, Chunk, Source, ChatResponse, AuthResponse, StreamEvent } from './types'
 
-export type { Document, Chunk, Source, ChatResponse, AuthResponse }
+export type { Document, Chunk, Source, ChatResponse, AuthResponse, StreamEvent }
 
 const BASE = '/api/v1'
 
@@ -77,6 +77,48 @@ export async function sendMessage(
     body: JSON.stringify({ doc_id: docId, question, session_id: sessionId })
   })
   return handleResponse<ChatResponse>(res)
+}
+
+export async function* streamMessage(
+  docId: string,
+  question: string,
+  sessionId: string | null
+): AsyncGenerator<StreamEvent> {
+  const res = await fetch(`${BASE}/chat/stream`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ doc_id: docId, question, session_id: sessionId }),
+  })
+
+  if (res.status === 401) throw new Error('Unauthorized')
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(err.detail ?? `Error ${res.status}`)
+  }
+
+  const reader = res.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') return
+      try {
+        yield JSON.parse(data) as StreamEvent
+      } catch {
+        // ignore malformed frames
+      }
+    }
+  }
 }
 
 export async function clearSession(sessionId: string, docId: string): Promise<null> {

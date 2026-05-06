@@ -9,7 +9,7 @@ import { ModeToggle } from '@/components/ModeToggle'
 import { cn } from '@/lib/utils'
 import {
   listDocuments, uploadDocument, deleteDocument,
-  sendMessage, clearSession, getChunks,
+  streamMessage, clearSession, getChunks,
 } from './api'
 import type { Document, Chunk, Message } from './types'
 
@@ -102,16 +102,58 @@ export default function ChatApp() {
     if (!input.trim() || !selectedDoc || loading) return
     const question = input.trim()
     setInput('')
-    setMessages(prev => [...prev, { role: 'user', content: question }])
     setLoading(true)
     setError(null)
+
+    // Add user message + empty streaming assistant message immediately
+    setMessages(prev => [
+      ...prev,
+      { role: 'user', content: question },
+      { role: 'assistant', content: '', streaming: true },
+    ])
+
     try {
-      const res = await sendMessage(selectedDoc.doc_id, question, sessionId)
-      setSessionId(res.session_id)
-      setMessages(prev => [...prev, { role: 'assistant', content: res.answer, sources: res.sources }])
+      for await (const event of streamMessage(selectedDoc.doc_id, question, sessionId)) {
+        if (event.type === 'token') {
+          setMessages(prev => {
+            const msgs = [...prev]
+            const last = msgs[msgs.length - 1]
+            if (last?.role === 'assistant') {
+              msgs[msgs.length - 1] = { ...last, content: last.content + event.content }
+            }
+            return msgs
+          })
+        } else if (event.type === 'sources') {
+          setSessionId(event.session_id)
+          setMessages(prev => {
+            const msgs = [...prev]
+            const last = msgs[msgs.length - 1]
+            if (last?.role === 'assistant') {
+              msgs[msgs.length - 1] = { ...last, sources: event.sources, streaming: false }
+            }
+            return msgs
+          })
+        } else if (event.type === 'error') {
+          throw new Error(event.message)
+        }
+      }
     } catch (err) {
+      // Remove empty assistant bubble on error
+      setMessages(prev => {
+        const msgs = [...prev]
+        const last = msgs[msgs.length - 1]
+        if (last?.role === 'assistant' && !last.content) msgs.pop()
+        return msgs
+      })
       setError(err instanceof Error ? err.message : 'Failed to send message')
     } finally {
+      // Ensure streaming flag is cleared even if sources event was missed
+      setMessages(prev => {
+        const msgs = [...prev]
+        const last = msgs[msgs.length - 1]
+        if (last?.streaming) msgs[msgs.length - 1] = { ...last, streaming: false }
+        return msgs
+      })
       setLoading(false)
     }
   }
@@ -209,7 +251,12 @@ export default function ChatApp() {
                           : 'bg-card border self-start rounded-bl-sm mr-16'
                       )}
                     >
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      <p className="whitespace-pre-wrap">
+                        {msg.content}
+                        {msg.streaming && (
+                          <span className="inline-block w-[2px] h-[0.9em] rounded-full bg-current align-text-bottom ml-[2px] animate-cursor-blink" />
+                        )}
+                      </p>
                       {msg.sources && msg.sources.length > 0 && (
                         <details className="mt-3 text-xs">
                           <summary className="cursor-pointer font-semibold opacity-60 hover:opacity-100 transition-opacity list-none flex items-center gap-1">
@@ -227,20 +274,6 @@ export default function ChatApp() {
                       )}
                     </div>
                   ))}
-
-                  {loading && (
-                    <div className="self-start bg-card border rounded-2xl rounded-bl-sm px-4 py-3.5 mr-16">
-                      <span className="flex gap-1.5 items-center">
-                        {[0, 150, 300].map(delay => (
-                          <span
-                            key={delay}
-                            style={{ animationDelay: `${delay}ms` }}
-                            className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce"
-                          />
-                        ))}
-                      </span>
-                    </div>
-                  )}
 
                   {error && (
                     <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">

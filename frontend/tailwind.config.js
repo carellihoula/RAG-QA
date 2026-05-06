@@ -47,9 +47,14 @@ export default {
           from: { opacity: '0', transform: 'translateY(4px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
+        'cursor-blink': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.2s ease-out',
+        'cursor-blink': 'cursor-blink 0.65s step-end infinite',
       },
     },
   },
