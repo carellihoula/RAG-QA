@@ -44,6 +44,7 @@ export default function AuthPage() {
         ? await login(email, password)
         : await register(email, password)
       localStorage.setItem('token', res.access_token)
+      localStorage.setItem('user-email', email)
       navigate('/app', { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
