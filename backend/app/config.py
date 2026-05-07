@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     llm_temperature: float = 0.0
 
+    # Hybrid search weights (must sum to 1.0)
+    bm25_weight: float = 0.4   # sparse  — exact keyword matching
+    dense_weight: float = 0.6  # dense   — semantic similarity
+
     # JWT
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"

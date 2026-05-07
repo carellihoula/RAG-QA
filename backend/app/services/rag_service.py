@@ -6,6 +6,8 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
+from langchain_community.retrievers import BM25Retriever
+from langchain.retrievers import EnsembleRetriever
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -26,6 +28,8 @@ class RAGService:
         self._chains: dict[str, ConversationalRetrievalChain] = {}
         # Streaming conversation history: {cache_key: [HumanMessage|AIMessage, ...]}
         self._histories: dict[str, list] = {}
+        # Hybrid retriever cache: {doc_id: EnsembleRetriever}
+        self._retrievers: dict[str, EnsembleRetriever] = {}
 
     # ── Indexing ──────────────────────────────────────────────────────
 
@@ -66,16 +70,55 @@ class RAGService:
             str(index_path), self._embeddings, allow_dangerous_deserialization=True
         )
 
+    # ── AI title generation ───────────────────────────────────────────
+
+    async def generate_title(self, doc_id: str) -> str:
+        """Asks the LLM to produce a short descriptive title for the document."""
+        vectorstore = self._load_vectorstore(doc_id)
+        sample_docs = list(vectorstore.docstore._dict.values())[:4]
+        context = "\n\n".join(doc.page_content[:400] for doc in sample_docs)
+
+        llm = ChatOpenAI(
+            model=settings.llm_model,
+            temperature=0.3,
+            openai_api_key=settings.openai_api_key,
+        )
+        messages = [
+            SystemMessage(content=(
+                "You are a document title generator. "
+                "Given a short extract from a document, respond with ONLY a concise, "
+                "descriptive title (5-10 words). No quotes, no punctuation at the end, "
+                "no explanation — just the title."
+            )),
+            HumanMessage(content=f"Document extract:\n\n{context}"),
+        ]
+        response = await llm.ainvoke(messages)
+        return response.content.strip()
+
+    # ── Hybrid retriever ──────────────────────────────────────────────
+
+    def _get_hybrid_retriever(self, doc_id: str) -> EnsembleRetriever:
+        """Builds (and caches) a BM25 + FAISS ensemble retriever for a document."""
+        if doc_id not in self._retrievers:
+            vectorstore = self._load_vectorstore(doc_id)
+            dense = vectorstore.as_retriever(
+                search_type="similarity",
+                search_kwargs={"k": settings.retriever_k},
+            )
+            all_docs = list(vectorstore.docstore._dict.values())
+            sparse = BM25Retriever.from_documents(all_docs, k=settings.retriever_k)
+            self._retrievers[doc_id] = EnsembleRetriever(
+                retrievers=[sparse, dense],
+                weights=[settings.bm25_weight, settings.dense_weight],
+            )
+        return self._retrievers[doc_id]
+
     # ── Legacy chat (non-streaming, kept for compatibility) ───────────
 
     def get_or_create_chain(self, doc_id: str, session_id: str) -> ConversationalRetrievalChain:
         cache_key = f"{doc_id}:{session_id}"
         if cache_key not in self._chains:
-            vectorstore = self._load_vectorstore(doc_id)
-            retriever = vectorstore.as_retriever(
-                search_type="similarity",
-                search_kwargs={"k": settings.retriever_k},
-            )
+            retriever = self._get_hybrid_retriever(doc_id)
             llm = ChatOpenAI(
                 model=settings.llm_model,
                 temperature=settings.llm_temperature,
@@ -112,8 +155,8 @@ class RAGService:
 
     def retrieve_context(self, doc_id: str, question: str) -> tuple[list, str]:
         """Retrieves relevant chunks and builds the context string. Run in executor."""
-        vectorstore = self._load_vectorstore(doc_id)
-        docs = vectorstore.similarity_search(question, k=settings.retriever_k)
+        retriever = self._get_hybrid_retriever(doc_id)
+        docs = retriever.invoke(question)
         parts = [
             f"[Page {doc.metadata.get('page', 0) + 1}]\n{doc.page_content}"
             for doc in docs
@@ -188,6 +231,7 @@ class RAGService:
         cache_key = f"{doc_id}:{session_id}"
         self._chains.pop(cache_key, None)
         self._histories.pop(cache_key, None)
+        # Retriever is doc-scoped, not session-scoped — leave it cached
 
 
 rag_service = RAGService()

@@ -11,23 +11,26 @@ doc_service = DocumentService()
 
 @router.post("/", response_model=DocumentResponse, status_code=201)
 async def upload_document(file: UploadFile = File(...)):
-    """Uploads a PDF and triggers RAG indexing."""
+    """Uploads a PDF, indexes it, then generates an AI title."""
     doc_id, pdf_path = await doc_service.save_upload(file)
 
     loop = asyncio.get_event_loop()
     try:
         response = await loop.run_in_executor(
-            None,
-            rag_service.index_document,
-            doc_id,
-            pdf_path,
-            file.filename
+            None, rag_service.index_document, doc_id, pdf_path, file.filename
         )
     except Exception as e:
         pdf_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Indexing error: {str(e)}")
 
-    return response
+    try:
+        title = await rag_service.generate_title(doc_id)
+    except Exception:
+        title = None  # graceful fallback — filename is still displayed
+
+    doc_service.save_metadata(doc_id, file.filename, title, response.indexed_at)
+
+    return response.model_copy(update={"title": title})
 
 
 @router.get("/", response_model=list[DocumentListItem])

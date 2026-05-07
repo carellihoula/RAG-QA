@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Upload, X, MessageSquare, FileText } from 'lucide-react'
+import {
+  LogOut, Upload, X, MessageSquare, FileText,
+  Sparkles, Loader2, RotateCcw, Library, ArrowUp, ChevronRight,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ModeToggle } from '@/components/ModeToggle'
@@ -28,6 +30,7 @@ export default function ChatApp() {
   const [error, setError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => { fetchDocuments() }, [])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
@@ -97,15 +100,28 @@ export default function ChatApp() {
     }
   }
 
-  async function handleSend(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
+  function autoResize() {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = Math.min(ta.scrollHeight, 128) + 'px'
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      submitMessage()
+    }
+  }
+
+  async function submitMessage() {
     if (!input.trim() || !selectedDoc || loading) return
     const question = input.trim()
     setInput('')
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
     setLoading(true)
     setError(null)
 
-    // Add user message + empty streaming assistant message immediately
     setMessages(prev => [
       ...prev,
       { role: 'user', content: question },
@@ -138,7 +154,6 @@ export default function ChatApp() {
         }
       }
     } catch (err) {
-      // Remove empty assistant bubble on error
       setMessages(prev => {
         const msgs = [...prev]
         const last = msgs[msgs.length - 1]
@@ -147,7 +162,6 @@ export default function ChatApp() {
       })
       setError(err instanceof Error ? err.message : 'Failed to send message')
     } finally {
-      // Ensure streaming flag is cleared even if sources event was missed
       setMessages(prev => {
         const msgs = [...prev]
         const last = msgs[msgs.length - 1]
@@ -158,156 +172,316 @@ export default function ChatApp() {
     }
   }
 
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    submitMessage()
+  }
+
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* Sidebar — always dark regardless of theme */}
-      <aside className="w-64 flex-shrink-0 flex flex-col bg-zinc-900 p-4 gap-4 border-r border-zinc-800">
-        <div className="flex items-center gap-1.5">
-          <h1 className="font-bold tracking-wide text-white flex-1 text-base">RAG Q&A</h1>
-          <ModeToggle className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800" />
+
+      {/* ── Sidebar ─────────────────────────────────────────────────── */}
+      <aside className="w-72 flex-shrink-0 flex flex-col bg-zinc-950 border-r border-zinc-800/60">
+
+        {/* Brand row */}
+        <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-zinc-800/60">
+          <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+            <Library className="h-3.5 w-3.5 text-white" />
+          </div>
+          <span className="font-semibold text-white tracking-tight text-sm flex-1">RAG Q&amp;A</span>
+          <ModeToggle className="h-7 w-7 text-zinc-500 hover:text-white hover:bg-zinc-800" />
           <Button
             variant="ghost" size="icon"
             onClick={logout}
             title="Log out"
-            className="h-8 w-8 text-zinc-400 hover:text-red-400 hover:bg-zinc-800"
+            className="h-7 w-7 text-zinc-500 hover:text-red-400 hover:bg-zinc-800/80"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-3.5 w-3.5" />
           </Button>
         </div>
 
-        <Button
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white h-9 text-sm"
-        >
-          <Upload className="mr-1.5 h-3.5 w-3.5" />
-          {uploading ? 'Uploading…' : 'Upload PDF'}
-        </Button>
-        <input ref={fileRef} type="file" accept=".pdf" hidden onChange={handleUpload} />
+        {/* Upload */}
+        <div className="px-3 pt-3 pb-2">
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className={cn(
+              'w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-800',
+              'py-2.5 text-xs font-medium text-zinc-500 transition-all duration-200',
+              'hover:border-blue-500/50 hover:text-blue-400 hover:bg-blue-500/5',
+              uploading && 'opacity-50 cursor-not-allowed pointer-events-none'
+            )}
+          >
+            {uploading
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Upload className="h-3.5 w-3.5" />
+            }
+            {uploading ? 'Uploading…' : 'Upload PDF'}
+          </button>
+          <input ref={fileRef} type="file" accept=".pdf" hidden onChange={handleUpload} />
+        </div>
 
-        <div className="flex-1 overflow-y-auto flex flex-col gap-0.5 -mx-1">
-          {documents.length === 0 && (
-            <p className="text-xs text-zinc-600 text-center mt-4 px-2">No documents yet.</p>
+        {/* Documents section */}
+        <div className="px-4 pt-1 pb-1.5 flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+            Documents
+          </span>
+          {documents.length > 0 && (
+            <span className="text-[10px] bg-zinc-800 text-zinc-500 rounded-full px-1.5 leading-5">
+              {documents.length}
+            </span>
           )}
-          {documents.map(doc => (
-            <div
-              key={doc.doc_id}
-              className={cn(
-                'group flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer transition-colors',
-                selectedDoc?.doc_id === doc.doc_id
-                  ? 'bg-zinc-700 text-white'
-                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
-              )}
-              onClick={() => selectDocument(doc)}
-            >
-              <FileText className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />
-              <span className="truncate flex-1 text-xs">{doc.filename}</span>
-              <button
-                className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all p-0.5 flex-shrink-0"
-                onClick={e => { e.stopPropagation(); handleDelete(doc.doc_id) }}
-              >
-                <X className="h-3 w-3" />
-              </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-2 pb-4 flex flex-col gap-0.5 scrollbar-thin">
+          {documents.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-12 px-4 text-center">
+              <FileText className="h-8 w-8 text-zinc-800" />
+              <p className="text-xs text-zinc-600 leading-relaxed">
+                No documents yet.<br />Upload a PDF to get started.
+              </p>
             </div>
-          ))}
+          ) : (
+            documents.map(doc => (
+              <button
+                key={doc.doc_id}
+                className={cn(
+                  'group w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-all duration-150',
+                  selectedDoc?.doc_id === doc.doc_id
+                    ? 'bg-blue-600/15 text-blue-300 ring-1 ring-inset ring-blue-500/25'
+                    : 'text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-200'
+                )}
+                onClick={() => selectDocument(doc)}
+              >
+                <FileText className={cn(
+                  'h-3.5 w-3.5 flex-shrink-0 transition-colors',
+                  selectedDoc?.doc_id === doc.doc_id ? 'text-blue-400' : 'text-zinc-700 group-hover:text-zinc-500'
+                )} />
+                <span className="truncate flex-1 text-xs font-medium">{doc.title ?? doc.filename}</span>
+                <span
+                  role="button"
+                  aria-label="Delete"
+                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-zinc-700 hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0"
+                  onClick={e => { e.stopPropagation(); handleDelete(doc.doc_id) }}
+                >
+                  <X className="h-3 w-3" />
+                </span>
+              </button>
+            ))
+          )}
         </div>
       </aside>
 
-      {/* Main content */}
+      {/* ── Main area ───────────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col overflow-hidden">
+
         {!selectedDoc ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground select-none">
-            <MessageSquare className="h-12 w-12 opacity-10" />
-            <p className="text-sm">Select or upload a PDF to start chatting.</p>
+          /* Empty / welcome state */
+          <div className="flex-1 flex flex-col items-center justify-center gap-6 px-8 select-none">
+            <div className="relative">
+              <div className="h-20 w-20 rounded-3xl bg-gradient-to-br from-blue-500/10 to-violet-600/10 border border-blue-500/20 flex items-center justify-center shadow-xl shadow-blue-500/5">
+                <Sparkles className="h-8 w-8 text-blue-400" />
+              </div>
+              <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-green-500 border-2 border-background flex items-center justify-center">
+                <div className="h-2 w-2 rounded-full bg-green-300 animate-pulse" />
+              </div>
+            </div>
+            <div className="text-center space-y-2 max-w-sm">
+              <h2 className="text-2xl font-bold tracking-tight">Ask your documents</h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Upload a PDF and have an AI-powered conversation about its content.
+                Powered by hybrid search &amp; GPT-4o-mini.
+              </p>
+            </div>
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-medium transition-all shadow-lg shadow-blue-600/20"
+            >
+              <Upload className="h-4 w-4" />
+              Upload a PDF
+            </button>
+            <p className="text-[11px] text-muted-foreground/50">or select an existing document in the sidebar</p>
           </div>
         ) : (
           <>
-            <header className="flex items-center gap-3 px-5 py-2.5 border-b bg-card flex-shrink-0">
-              <span className="font-medium text-sm flex-1 truncate">{selectedDoc.filename}</span>
+            {/* Header */}
+            <header className="flex items-center gap-3 px-5 py-2.5 border-b bg-card/80 backdrop-blur-sm flex-shrink-0">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="h-6 w-6 rounded-md bg-blue-500/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
+                  <FileText className="h-3 w-3 text-blue-400" />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="font-medium text-sm truncate leading-tight">
+                    {selectedDoc.title ?? selectedDoc.filename}
+                  </span>
+                  {selectedDoc.title && (
+                    <span className="text-[10px] text-muted-foreground/50 truncate leading-tight">
+                      {selectedDoc.filename}
+                    </span>
+                  )}
+                </div>
+              </div>
               <Tabs value={tab} onValueChange={v => switchTab(v as 'chat' | 'chunks')}>
-                <TabsList className="h-8">
-                  <TabsTrigger value="chat" className="text-xs h-7 px-3">Chat</TabsTrigger>
-                  <TabsTrigger value="chunks" className="text-xs h-7 px-3">Chunks</TabsTrigger>
+                <TabsList className="h-7">
+                  <TabsTrigger value="chat" className="text-xs h-6 px-3">Chat</TabsTrigger>
+                  <TabsTrigger value="chunks" className="text-xs h-6 px-3">Chunks</TabsTrigger>
                 </TabsList>
               </Tabs>
               {tab === 'chat' && sessionId && (
-                <Button variant="outline" size="sm" className="h-7 text-xs"
-                  onClick={() => selectDocument(selectedDoc)}>
-                  Clear chat
+                <Button
+                  variant="ghost" size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  title="Clear conversation"
+                  onClick={() => selectDocument(selectedDoc)}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
                 </Button>
               )}
             </header>
 
+            {/* ── Chat panel ── */}
             {tab === 'chat' && (
               <>
-                <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+                <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5 scrollbar-thin">
+
+                  {messages.length === 0 && (
+                    <div className="flex flex-col items-center justify-center h-full gap-3 text-center select-none">
+                      <MessageSquare className="h-8 w-8 text-muted-foreground/20" />
+                      <p className="text-sm text-muted-foreground">
+                        Ask your first question about{' '}
+                        <span className="font-medium text-foreground/70">
+                          {selectedDoc.title ?? selectedDoc.filename}
+                        </span>
+                      </p>
+                    </div>
+                  )}
+
                   {messages.map((msg, i) => (
                     <div
                       key={i}
                       className={cn(
-                        'max-w-2xl rounded-2xl px-4 py-3 text-sm leading-relaxed animate-fade-in',
-                        msg.role === 'user'
-                          ? 'bg-primary text-primary-foreground self-end rounded-br-sm ml-16'
-                          : 'bg-card border self-start rounded-bl-sm mr-16'
+                        'flex gap-3 animate-fade-in',
+                        msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'
                       )}
                     >
-                      <p className="whitespace-pre-wrap">
-                        {msg.content}
-                        {msg.streaming && (
-                          <span className="inline-block w-[2px] h-[0.9em] rounded-full bg-current align-text-bottom ml-[2px] animate-cursor-blink" />
-                        )}
-                      </p>
-                      {msg.sources && msg.sources.length > 0 && (
-                        <details className="mt-3 text-xs">
-                          <summary className="cursor-pointer font-semibold opacity-60 hover:opacity-100 transition-opacity list-none flex items-center gap-1">
-                            <span>▸</span> Sources ({msg.sources.length})
-                          </summary>
-                          <div className="mt-2 flex flex-col gap-2">
-                            {msg.sources.map((s, j) => (
-                              <div key={j} className="p-2.5 bg-muted rounded-lg border-l-2 border-primary/40">
-                                <Badge variant="outline" className="text-[10px] h-4 mb-1">Page {s.page}</Badge>
-                                <p className="text-muted-foreground leading-relaxed mt-1">{s.content}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </details>
+                      {/* Avatar */}
+                      {msg.role === 'assistant' ? (
+                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md">
+                          <Sparkles className="h-3.5 w-3.5 text-white" />
+                        </div>
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-zinc-700 dark:bg-zinc-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md">
+                          <span className="text-[10px] font-bold text-zinc-200 leading-none">You</span>
+                        </div>
                       )}
+
+                      {/* Bubble */}
+                      <div className={cn(
+                        'max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
+                        msg.role === 'user'
+                          ? 'bg-blue-600 text-white rounded-tr-sm'
+                          : 'bg-card border border-border/80 rounded-tl-sm'
+                      )}>
+                        <p className="whitespace-pre-wrap break-words">
+                          {msg.content}
+                          {msg.streaming && (
+                            <span className="inline-block w-[2px] h-[0.85em] rounded-full bg-current align-text-bottom ml-[2px] animate-cursor-blink" />
+                          )}
+                        </p>
+
+                        {/* Sources accordion */}
+                        {msg.sources && msg.sources.length > 0 && (
+                          <details className="mt-3">
+                            <summary className="cursor-pointer list-none flex items-center gap-1.5 text-xs font-medium select-none opacity-50 hover:opacity-90 transition-opacity">
+                              <ChevronRight className="h-3 w-3 details-chevron transition-transform" />
+                              {msg.sources.length} source{msg.sources.length > 1 ? 's' : ''} referenced
+                            </summary>
+                            <div className="mt-2.5 flex flex-col gap-2">
+                              {msg.sources.map((s, j) => (
+                                <div key={j} className="rounded-xl bg-black/5 dark:bg-white/5 border border-border/40 p-3">
+                                  <Badge variant="outline" className="text-[10px] h-4 mb-2 font-mono tracking-tight">
+                                    Page {s.page}
+                                  </Badge>
+                                  <p className="text-[11px] text-muted-foreground leading-relaxed">{s.content}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
                     </div>
                   ))}
 
                   {error && (
-                    <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
-                      {error}
+                    <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/5 border border-destructive/20 rounded-xl px-4 py-3 animate-fade-in">
+                      <span className="font-semibold shrink-0">Error:</span>
+                      <span>{error}</span>
                     </div>
                   )}
                   <div ref={bottomRef} />
                 </div>
 
-                <form className="flex gap-3 p-4 border-t bg-card flex-shrink-0" onSubmit={handleSend}>
-                  <Input
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    placeholder="Ask a question about this document…"
-                    disabled={loading}
-                  />
-                  <Button type="submit" disabled={loading || !input.trim()}>Send</Button>
+                {/* Input bar */}
+                <form className="flex-shrink-0 px-5 pb-5 pt-3 border-t bg-card/40" onSubmit={handleSubmit}>
+                  <div className={cn(
+                    'flex items-end gap-2 bg-background border rounded-2xl px-4 py-2.5 transition-all duration-200 shadow-sm',
+                    'focus-within:ring-2 focus-within:ring-blue-500/25 focus-within:border-blue-500/40 focus-within:shadow-md'
+                  )}>
+                    <textarea
+                      ref={textareaRef}
+                      rows={1}
+                      value={input}
+                      onChange={e => { setInput(e.target.value); autoResize() }}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Ask a question… (Enter ↵ to send)"
+                      disabled={loading}
+                      className="flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground/50 max-h-32 leading-relaxed py-0.5 disabled:opacity-50"
+                    />
+                    <button
+                      type="submit"
+                      disabled={loading || !input.trim()}
+                      className={cn(
+                        'h-8 w-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-200',
+                        input.trim() && !loading
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm active:scale-90'
+                          : 'bg-muted text-muted-foreground/40 cursor-not-allowed'
+                      )}
+                    >
+                      {loading
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <ArrowUp className="h-3.5 w-3.5" />
+                      }
+                    </button>
+                  </div>
+                  <p className="text-center text-[10px] text-muted-foreground/30 mt-2 tracking-wide">
+                    GPT-4o-mini · Hybrid search (BM25 + semantic) · Shift+Enter for newline
+                  </p>
                 </form>
               </>
             )}
 
+            {/* ── Chunks panel ── */}
             {tab === 'chunks' && (
-              <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3">
-                {chunksLoading && <p className="text-sm text-muted-foreground">Loading chunks…</p>}
+              <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-3 scrollbar-thin">
+                {chunksLoading && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading chunks…
+                  </div>
+                )}
                 {error && <p className="text-sm text-destructive">{error}</p>}
                 {!chunksLoading && chunks.length > 0 && (
                   <>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-1">
                       {chunks.length} chunks indexed
                     </p>
                     {chunks.map((chunk, i) => (
-                      <div key={i} className="rounded-lg border bg-card p-4">
-                        <Badge className="mb-2 text-[11px]">Page {chunk.page}</Badge>
-                        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                      <div key={i} className="rounded-xl border bg-card px-4 py-3.5 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge variant="outline" className="text-[10px] font-mono h-5">Page {chunk.page}</Badge>
+                          <span className="text-[10px] text-muted-foreground/40">#{i + 1}</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap break-words">
                           {chunk.content}
                         </p>
                       </div>

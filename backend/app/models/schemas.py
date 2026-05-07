@@ -7,6 +7,7 @@ class DocumentResponse(BaseModel):
     """Returned after a successful upload."""
     doc_id: str
     filename: str
+    title: Optional[str] = None
     page_count: int
     chunk_count: int
     indexed_at: datetime
@@ -16,6 +17,7 @@ class DocumentListItem(BaseModel):
     """Item in the list of available documents."""
     doc_id: str
     filename: str
+    title: Optional[str] = None
     indexed_at: datetime
 
 

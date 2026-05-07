@@ -55,5 +55,27 @@
   }
   body {
     @apply bg-background text-foreground font-sans;
+    -webkit-font-smoothing: antialiased;
   }
+}
+
+/* Thin scrollbar for chat/chunk panels */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 5px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+  border-radius: 9999px;
+}
+
+/* Rotate chevron when <details> is open */
+details[open] .details-chevron {
+  transform: rotate(90deg);
 }

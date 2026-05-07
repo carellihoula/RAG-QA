@@ -1,7 +1,9 @@
 import uuid
+import json
 import aiofiles
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import UploadFile, HTTPException
 from app.config import settings
@@ -42,21 +44,44 @@ class DocumentService:
         """Returns the FAISS index directory for this document."""
         return settings.index_dir / doc_id
 
+    def save_metadata(
+        self,
+        doc_id: str,
+        filename: str,
+        title: Optional[str],
+        indexed_at: datetime,
+    ) -> None:
+        meta_path = self.get_index_path(doc_id) / "metadata.json"
+        meta_path.write_text(json.dumps({
+            "filename": filename,
+            "title": title,
+            "indexed_at": indexed_at.isoformat(),
+        }))
+
+    def load_metadata(self, doc_id: str) -> dict:
+        meta_path = self.get_index_path(doc_id) / "metadata.json"
+        if meta_path.exists():
+            return json.loads(meta_path.read_text())
+        return {}
+
     def list_documents(self) -> list[DocumentListItem]:
         """Lists all indexed documents."""
         docs = []
         for pdf_path in settings.upload_dir.glob("*.pdf"):
             doc_id = pdf_path.stem
             index_path = self.get_index_path(doc_id)
-            if index_path.exists():
-                stat = pdf_path.stat()
-                docs.append(DocumentListItem(
-                    doc_id=doc_id,
-                    filename=pdf_path.name,
-                    indexed_at=datetime.fromtimestamp(
-                        stat.st_mtime, tz=timezone.utc
-                    )
-                ))
+            if not index_path.exists():
+                continue
+            meta = self.load_metadata(doc_id)
+            stat = pdf_path.stat()
+            docs.append(DocumentListItem(
+                doc_id=doc_id,
+                filename=meta.get("filename", pdf_path.name),
+                title=meta.get("title"),
+                indexed_at=datetime.fromisoformat(meta["indexed_at"])
+                if "indexed_at" in meta
+                else datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
+            ))
         return sorted(docs, key=lambda d: d.indexed_at, reverse=True)
 
     def delete_document(self, doc_id: str) -> None:
