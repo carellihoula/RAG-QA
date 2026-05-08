@@ -72,8 +72,9 @@ export default function ChatApp() {
     setUploading(true)
     setError(null)
     try {
-      await uploadDocument(file)
+      const newDoc = await uploadDocument(file)
       await fetchDocuments()
+      selectDocument(newDoc)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
@@ -229,7 +230,7 @@ export default function ChatApp() {
               }
               {uploading ? 'Uploading…' : 'Upload PDF'}
             </button>
-            <input ref={fileRef} type="file" accept=".pdf" hidden onChange={handleUpload} />
+            <input ref={fileRef} type="file" accept=".pdf" hidden disabled={uploading} onChange={handleUpload} />
           </div>
 
           {/* Document list */}
@@ -296,16 +297,47 @@ export default function ChatApp() {
                   Powered by hybrid search &amp; GPT-4o-mini.
                 </p>
               </div>
-              <button
-                onClick={() => fileRef.current?.click()}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-medium transition-all shadow-lg shadow-blue-600/20"
-              >
-                <Upload className="h-4 w-4" />
-                Upload a PDF
-              </button>
-              <p className="text-[11px] text-muted-foreground/50">
-                or select an existing document in the sidebar
-              </p>
+              {uploading ? (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="relative h-14 w-14">
+                    <div className="absolute inset-0 rounded-2xl bg-blue-500/10 border border-blue-500/20" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Loader2 className="h-6 w-6 text-blue-400 animate-spin" />
+                    </div>
+                    <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 56 56">
+                      <circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-500/10" />
+                      <circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                        strokeDasharray="150.8" strokeDashoffset="37.7"
+                        className="text-blue-500 animate-[spin_1.5s_linear_infinite]"
+                        style={{ transformOrigin: '28px 28px' }}
+                      />
+                    </svg>
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-medium text-foreground">Uploading your document…</p>
+                    <p className="text-xs text-muted-foreground">AI is extracting &amp; indexing the content</p>
+                  </div>
+                  <div className="flex gap-1 mt-1">
+                    {[0, 1, 2].map(i => (
+                      <div key={i} className="h-1.5 w-1.5 rounded-full bg-blue-500/60 animate-bounce"
+                        style={{ animationDelay: `${i * 150}ms` }} />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-medium transition-all shadow-lg shadow-blue-600/20"
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload a PDF
+                </button>
+              )}
+              {!uploading && (
+                <p className="text-[11px] text-muted-foreground/50">
+                  or select an existing document in the sidebar
+                </p>
+              )}
             </div>
           ) : (
             <>
