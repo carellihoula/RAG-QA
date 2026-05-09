@@ -19,6 +19,8 @@ class DocumentListItem(BaseModel):
     filename: str
     title: Optional[str] = None
     indexed_at: datetime
+    page_count: Optional[int] = None
+    chunk_count: Optional[int] = None
 
 
 class ChatRequest(BaseModel):

@@ -50,12 +50,16 @@ class DocumentService:
         filename: str,
         title: Optional[str],
         indexed_at: datetime,
+        page_count: int = 0,
+        chunk_count: int = 0,
     ) -> None:
         meta_path = self.get_index_path(doc_id) / "metadata.json"
         meta_path.write_text(json.dumps({
             "filename": filename,
             "title": title,
             "indexed_at": indexed_at.isoformat(),
+            "page_count": page_count,
+            "chunk_count": chunk_count,
         }))
 
     def load_metadata(self, doc_id: str) -> dict:
@@ -81,6 +85,8 @@ class DocumentService:
                 indexed_at=datetime.fromisoformat(meta["indexed_at"])
                 if "indexed_at" in meta
                 else datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
+                page_count=meta.get("page_count"),
+                chunk_count=meta.get("chunk_count"),
             ))
         return sorted(docs, key=lambda d: d.indexed_at, reverse=True)
 

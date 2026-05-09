@@ -28,7 +28,7 @@ async def upload_document(file: UploadFile = File(...)):
     except Exception:
         title = None  # graceful fallback — filename is still displayed
 
-    doc_service.save_metadata(doc_id, file.filename, title, response.indexed_at)
+    doc_service.save_metadata(doc_id, file.filename, title, response.indexed_at, response.page_count, response.chunk_count)
 
     return response.model_copy(update={"title": title})
 

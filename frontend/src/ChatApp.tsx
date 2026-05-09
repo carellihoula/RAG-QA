@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Upload, X, MessageSquare, FileText,
+  Upload, X, MessageSquare, FileText, LayoutDashboard,
   Sparkles, Loader2, RotateCcw, ArrowUp, ChevronRight,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SidebarLayout } from '@/components/AppSidebar'
@@ -17,12 +18,15 @@ import type { Document, Chunk, Message } from './types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+const MAX_DOCS = 10
+
 function nameFromEmail(email: string) {
   const prefix = email.split('@')[0]
   return prefix.charAt(0).toUpperCase() + prefix.slice(1)
 }
 
 const APP_NAV: NavItem[] = [
+  { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
   { label: 'Chat', icon: MessageSquare, href: '/app' },
 ]
 
@@ -43,10 +47,11 @@ export default function ChatApp() {
   const [chunksLoading, setChunksLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const dragCounter = useRef(0)
 
   useEffect(() => { fetchDocuments() }, [])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
@@ -56,7 +61,7 @@ export default function ChatApp() {
       setDocuments(await listDocuments())
     } catch (err) {
       if (err instanceof Error && err.message === 'Unauthorized') logout()
-      else setError('Could not load documents.')
+      else toast.error('Could not load documents.')
     }
   }
 
@@ -66,21 +71,55 @@ export default function ChatApp() {
     navigate('/login', { replace: true })
   }
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function handleUpload(file: File) {
+    if (uploading) return
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('Only PDF files are supported')
+      return
+    }
     setUploading(true)
-    setError(null)
     try {
       const newDoc = await uploadDocument(file)
       await fetchDocuments()
       selectDocument(newDoc)
+      toast.success(`"${newDoc.title ?? newDoc.filename}" uploaded and indexed`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
+      toast.error(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
     }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) handleUpload(file)
+  }
+
+  // ── Drag & drop ──────────────────────────────────────────────────────
+
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault()
+    dragCounter.current++
+    setIsDragging(true)
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault()
+    dragCounter.current--
+    if (dragCounter.current === 0) setIsDragging(false)
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    dragCounter.current = 0
+    setIsDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) handleUpload(file)
   }
 
   async function handleDelete(docId: string) {
@@ -88,8 +127,9 @@ export default function ChatApp() {
       await deleteDocument(docId)
       if (selectedDoc?.doc_id === docId) selectDocument(null)
       await fetchDocuments()
+      toast.success('Document deleted')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed')
+      toast.error(err instanceof Error ? err.message : 'Delete failed')
     }
   }
 
@@ -100,18 +140,16 @@ export default function ChatApp() {
     setSessionId(null)
     setChunks([])
     setTab('chat')
-    setError(null)
   }
 
   async function switchTab(next: 'chat' | 'chunks') {
     setTab(next)
-    setError(null)
     if (next === 'chunks' && chunks.length === 0 && selectedDoc) {
       setChunksLoading(true)
       try {
         setChunks(await getChunks(selectedDoc.doc_id))
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load chunks')
+        toast.error(err instanceof Error ? err.message : 'Failed to load chunks')
       } finally {
         setChunksLoading(false)
       }
@@ -138,7 +176,6 @@ export default function ChatApp() {
     setInput('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     setLoading(true)
-    setError(null)
 
     setMessages(prev => [
       ...prev,
@@ -158,6 +195,8 @@ export default function ChatApp() {
             return msgs
           })
         } else if (event.type === 'sources') {
+          const prev = parseInt(localStorage.getItem('msg-count') ?? '0')
+          localStorage.setItem('msg-count', String(prev + 1))
           setSessionId(event.session_id)
           setMessages(prev => {
             const msgs = [...prev]
@@ -178,7 +217,7 @@ export default function ChatApp() {
         if (last?.role === 'assistant' && !last.content) msgs.pop()
         return msgs
       })
-      setError(err instanceof Error ? err.message : 'Failed to send message')
+      toast.error(err instanceof Error ? err.message : 'Failed to send message')
     } finally {
       setMessages(prev => {
         const msgs = [...prev]
@@ -195,11 +234,34 @@ export default function ChatApp() {
     submitMessage()
   }
 
+  const docUsagePct = Math.min((documents.length / MAX_DOCS) * 100, 100)
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <SidebarLayout sidebarProps={{ user, navItems: APP_NAV, onLogout: logout }}>
-      <div className="flex h-full overflow-hidden">
+      <div
+        className="flex h-full overflow-hidden relative"
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+
+        {/* ── Drag overlay ──────────────────────────────────────────── */}
+        {isDragging && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-none">
+            <div className="flex flex-col items-center gap-4 border-2 border-dashed border-blue-500/60 rounded-2xl px-20 py-16 bg-blue-500/5">
+              <div className="h-16 w-16 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                <Upload className="h-7 w-7 text-blue-400" />
+              </div>
+              <div className="text-center">
+                <p className="text-base font-semibold text-foreground">Drop your PDF here</p>
+                <p className="text-sm text-muted-foreground mt-0.5">Release to upload and index</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Document sidebar ───────────────────────────────────────── */}
         <aside className="w-64 flex-shrink-0 flex flex-col bg-sidebar border-r border-sidebar-border">
@@ -230,11 +292,11 @@ export default function ChatApp() {
               }
               {uploading ? 'Uploading…' : 'Upload PDF'}
             </button>
-            <input ref={fileRef} type="file" accept=".pdf" hidden disabled={uploading} onChange={handleUpload} />
+            <input ref={fileRef} type="file" accept=".pdf" hidden disabled={uploading} onChange={handleFileChange} />
           </div>
 
           {/* Document list */}
-          <div className="flex-1 overflow-y-auto px-2 pb-4 flex flex-col gap-0.5 scrollbar-thin">
+          <div className="flex-1 overflow-y-auto px-2 pb-2 flex flex-col gap-0.5 scrollbar-thin">
             {documents.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 py-10 px-4 text-center">
                 <FileText className="h-8 w-8 text-sidebar-muted-foreground/30" />
@@ -247,7 +309,7 @@ export default function ChatApp() {
                 <button
                   key={doc.doc_id}
                   className={cn(
-                    'group w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-all duration-150',
+                    'group w-full flex items-start gap-2 px-2.5 py-2 rounded-lg text-left transition-all duration-150',
                     selectedDoc?.doc_id === doc.doc_id
                       ? 'bg-primary/10 text-primary ring-1 ring-inset ring-primary/20'
                       : 'text-sidebar-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -255,18 +317,27 @@ export default function ChatApp() {
                   onClick={() => selectDocument(doc)}
                 >
                   <FileText className={cn(
-                    'h-3.5 w-3.5 flex-shrink-0 transition-colors',
+                    'h-3.5 w-3.5 flex-shrink-0 transition-colors mt-0.5',
                     selectedDoc?.doc_id === doc.doc_id
                       ? 'text-primary'
                       : 'text-sidebar-muted-foreground/50 group-hover:text-sidebar-muted-foreground'
                   )} />
-                  <span className="truncate flex-1 text-xs font-medium">
-                    {doc.title ?? doc.filename}
-                  </span>
+                  <div className="flex-1 min-w-0">
+                    <span className="block truncate text-xs font-medium">
+                      {doc.title ?? doc.filename}
+                    </span>
+                    {(doc.page_count != null || doc.chunk_count != null) && (
+                      <span className="text-[10px] text-sidebar-muted-foreground/50 leading-tight">
+                        {doc.page_count != null ? `${doc.page_count}p` : ''}
+                        {doc.page_count != null && doc.chunk_count != null ? ' · ' : ''}
+                        {doc.chunk_count != null ? `${doc.chunk_count} chunks` : ''}
+                      </span>
+                    )}
+                  </div>
                   <span
                     role="button"
                     aria-label="Delete"
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-zinc-700 hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0"
+                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-zinc-700 hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0 mt-0.5"
                     onClick={e => { e.stopPropagation(); handleDelete(doc.doc_id) }}
                   >
                     <X className="h-3 w-3" />
@@ -274,6 +345,25 @@ export default function ChatApp() {
                 </button>
               ))
             )}
+          </div>
+
+          {/* Plan badge */}
+          <div className="px-3 py-3 border-t border-sidebar-border flex-shrink-0">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-sidebar-muted-foreground">
+                <Sparkles className="h-3 w-3 text-blue-400" />
+                Free plan
+              </span>
+              <span className="text-[11px] text-sidebar-muted-foreground/60">
+                {documents.length} / {MAX_DOCS} docs
+              </span>
+            </div>
+            <div className="h-1 rounded-full bg-sidebar-accent overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-all duration-500"
+                style={{ width: `${docUsagePct}%` }}
+              />
+            </div>
           </div>
         </aside>
 
@@ -297,6 +387,7 @@ export default function ChatApp() {
                   Powered by hybrid search &amp; GPT-4o-mini.
                 </p>
               </div>
+
               {uploading ? (
                 <div className="flex flex-col items-center gap-3">
                   <div className="relative h-14 w-14">
@@ -333,9 +424,10 @@ export default function ChatApp() {
                   Upload a PDF
                 </button>
               )}
+
               {!uploading && (
                 <p className="text-[11px] text-muted-foreground/50">
-                  or select an existing document in the sidebar
+                  drag &amp; drop anywhere · or select an existing document in the sidebar
                 </p>
               )}
             </div>
@@ -357,6 +449,20 @@ export default function ChatApp() {
                       </span>
                     )}
                   </div>
+                  {(selectedDoc.page_count != null || selectedDoc.chunk_count != null) && (
+                    <div className="flex items-center gap-1 ml-1 flex-shrink-0">
+                      {selectedDoc.page_count != null && (
+                        <Badge variant="outline" className="text-[10px] h-4 font-mono">
+                          {selectedDoc.page_count}p
+                        </Badge>
+                      )}
+                      {selectedDoc.chunk_count != null && (
+                        <Badge variant="outline" className="text-[10px] h-4 font-mono">
+                          {selectedDoc.chunk_count} chunks
+                        </Badge>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <Tabs value={tab} onValueChange={v => switchTab(v as 'chat' | 'chunks')}>
                   <TabsList className="h-7">
@@ -447,12 +553,6 @@ export default function ChatApp() {
                       </div>
                     ))}
 
-                    {error && (
-                      <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/5 border border-destructive/20 rounded-xl px-4 py-3 animate-fade-in">
-                        <span className="font-semibold shrink-0">Error:</span>
-                        <span>{error}</span>
-                      </div>
-                    )}
                     <div ref={bottomRef} />
                   </div>
 
@@ -504,7 +604,6 @@ export default function ChatApp() {
                       Loading chunks…
                     </div>
                   )}
-                  {error && <p className="text-sm text-destructive">{error}</p>}
                   {!chunksLoading && chunks.length > 0 && (
                     <>
                       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-1">
