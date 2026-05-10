@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
+from typing import Literal, Optional
 from datetime import datetime
 
 
@@ -13,6 +13,12 @@ class DocumentResponse(BaseModel):
     indexed_at: datetime
 
 
+SourceType = Literal[
+    'pdf', 'docx', 'pptx', 'xlsx', 'csv', 'txt', 'md', 'html',
+    'url', 'wikipedia', 'arxiv', 'rss',
+]
+
+
 class DocumentListItem(BaseModel):
     """Item in the list of available documents."""
     doc_id: str
@@ -21,6 +27,15 @@ class DocumentListItem(BaseModel):
     indexed_at: datetime
     page_count: Optional[int] = None
     chunk_count: Optional[int] = None
+    in_library: bool = True
+    source_type: str = 'pdf'
+    source_url: Optional[str] = None
+
+
+class DocumentUrlRequest(BaseModel):
+    """Body of POST /documents/from-url."""
+    url: str
+    source_type: Literal['url', 'wikipedia', 'arxiv', 'rss']
 
 
 class ChatRequest(BaseModel):
@@ -66,3 +81,36 @@ class UserOut(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+# ── Knowledge Base schemas ────────────────────────────────────────────────────
+
+class KnowledgeBaseCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    system_prompt: Optional[str] = None
+    color: str = "blue"
+
+
+class KnowledgeBaseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    description: Optional[str] = None
+    system_prompt: Optional[str] = None
+    color: str
+    doc_ids: list[str]
+    created_at: datetime
+
+
+class KnowledgeBaseUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    system_prompt: Optional[str] = None
+    color: Optional[str] = None
+
+
+class KBChatRequest(BaseModel):
+    kb_id: str
+    question: str
+    session_id: Optional[str] = None

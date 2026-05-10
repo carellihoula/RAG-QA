@@ -1,6 +1,6 @@
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -8,6 +8,7 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain_community.retrievers import BM25Retriever
 from langchain.retrievers import EnsembleRetriever
+from langchain.retrievers.merger_retriever import MergerRetriever
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -33,18 +34,16 @@ class RAGService:
 
     # ── Indexing ──────────────────────────────────────────────────────
 
-    def index_document(self, doc_id: str, pdf_path: Path, filename: str) -> DocumentResponse:
-        """Full pipeline: PDF → chunks → embeddings → FAISS on disk."""
-        loader = PyPDFLoader(str(pdf_path))
-        pages = loader.load()
-        page_count = len(pages)
+    def index_from_docs(self, doc_id: str, docs: list, filename: str) -> DocumentResponse:
+        """Pipeline: pre-loaded LangChain documents → chunks → FAISS on disk."""
+        page_count = len(docs)
 
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
             separators=["\n\n", "\n", " ", ""],
         )
-        chunks = splitter.split_documents(pages)
+        chunks = splitter.split_documents(docs)
         chunk_count = len(chunks)
 
         vectorstore = FAISS.from_documents(chunks, self._embeddings)
@@ -60,6 +59,12 @@ class RAGService:
             chunk_count=chunk_count,
             indexed_at=datetime.now(tz=timezone.utc),
         )
+
+    def index_document(self, doc_id: str, pdf_path: Path, filename: str) -> DocumentResponse:
+        """Backward-compat: loads a PDF then calls index_from_docs."""
+        loader = PyPDFLoader(str(pdf_path))
+        pages = loader.load()
+        return self.index_from_docs(doc_id, pages, filename)
 
     def _load_vectorstore(self, doc_id: str) -> FAISS:
         """Loads a FAISS index from disk."""
@@ -231,7 +236,79 @@ class RAGService:
         cache_key = f"{doc_id}:{session_id}"
         self._chains.pop(cache_key, None)
         self._histories.pop(cache_key, None)
-        # Retriever is doc-scoped, not session-scoped — leave it cached
+
+    # ── Knowledge Base retrieval ───────────────────────────────────────
+
+    def get_kb_retriever(self, doc_ids: list[str]):
+        """Merged hybrid retriever across all documents of a Knowledge Base."""
+        retrievers = []
+        for doc_id in doc_ids:
+            try:
+                retrievers.append(self._get_hybrid_retriever(doc_id))
+            except Exception:
+                continue
+        if not retrievers:
+            raise ValueError("No valid documents found in this knowledge base")
+        if len(retrievers) == 1:
+            return retrievers[0]
+        return MergerRetriever(retrievers=retrievers)
+
+    def retrieve_kb_context(self, doc_ids: list[str], question: str) -> tuple[list, str]:
+        retriever = self.get_kb_retriever(doc_ids)
+        docs = retriever.invoke(question)
+        parts = [
+            f"[Page {doc.metadata.get('page', 0) + 1}]\n{doc.page_content}"
+            for doc in docs
+        ]
+        return docs, "\n\n---\n\n".join(parts)
+
+    async def stream_kb_answer(
+        self,
+        kb_id: str,
+        question: str,
+        session_id: str,
+        context: str,
+        system_prompt: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
+        cache_key = f"kb:{kb_id}:{session_id}"
+        history = self._histories.get(cache_key, [])
+
+        base = (
+            system_prompt.rstrip()
+            if system_prompt
+            else (
+                "You are a helpful assistant. Answer the user's question based solely "
+                "on the context below. Be concise and accurate. "
+                "If the answer is not in the context, say so clearly."
+            )
+        )
+        messages = [
+            SystemMessage(content=f"{base}\n\nContext:\n{context}"),
+            *history,
+            HumanMessage(content=question),
+        ]
+
+        llm = ChatOpenAI(
+            model=settings.llm_model,
+            temperature=settings.llm_temperature,
+            openai_api_key=settings.openai_api_key,
+            streaming=True,
+        )
+
+        full_answer = ""
+        async for chunk in llm.astream(messages):
+            token: str = chunk.content  # type: ignore[assignment]
+            if token:
+                full_answer += token
+                yield token
+
+        self._histories[cache_key] = history + [
+            HumanMessage(content=question),
+            AIMessage(content=full_answer),
+        ]
+
+    def clear_kb_session(self, kb_id: str, session_id: str) -> None:
+        self._histories.pop(f"kb:{kb_id}:{session_id}", None)
 
 
 rag_service = RAGService()

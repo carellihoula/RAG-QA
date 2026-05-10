@@ -10,9 +10,18 @@ langchain-openai==0.1.8
 faiss-cpu==1.8.0
 pypdf==4.2.0
 rank_bm25==0.2.2
-
 python-dotenv==1.0.1
 aiofiles==23.2.1
 sqlalchemy==2.0.30
 passlib[argon2]
 python-jose[cryptography]==3.3.0
+
+# Multi-source loaders
+docx2txt==0.9
+python-pptx
+openpyxl
+beautifulsoup4
+lxml
+wikipedia
+arxiv
+feedparser

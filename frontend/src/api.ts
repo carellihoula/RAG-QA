@@ -1,6 +1,6 @@
-import type { Document, Chunk, Source, ChatResponse, AuthResponse, StreamEvent } from './types'
+import type { Document, Chunk, Source, ChatResponse, AuthResponse, StreamEvent, KnowledgeBase } from './types'
 
-export type { Document, Chunk, Source, ChatResponse, AuthResponse, StreamEvent }
+export type { Document, Chunk, Source, ChatResponse, AuthResponse, StreamEvent, KnowledgeBase }
 
 const BASE = '/api/v1'
 
@@ -49,6 +49,18 @@ export async function uploadDocument(file: File): Promise<Document> {
     method: 'POST',
     headers: authHeaders(),
     body: form
+  })
+  return handleResponse<Document>(res)
+}
+
+export async function importFromUrl(data: {
+  url: string
+  source_type: 'url' | 'youtube' | 'wikipedia' | 'arxiv' | 'rss'
+}): Promise<Document> {
+  const res = await fetch(`${BASE}/documents/from-url`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
   })
   return handleResponse<Document>(res)
 }
@@ -127,4 +139,107 @@ export async function clearSession(sessionId: string, docId: string): Promise<nu
     headers: authHeaders()
   })
   return handleResponse<null>(res)
+}
+
+// ── Knowledge Bases ───────────────────────────────────────────────────────────
+
+export async function listKnowledgeBases(): Promise<KnowledgeBase[]> {
+  const res = await fetch(`${BASE}/kb/`, { headers: authHeaders() })
+  return handleResponse<KnowledgeBase[]>(res)
+}
+
+export async function createKnowledgeBase(
+  data: { name: string; description?: string; system_prompt?: string; color?: string }
+): Promise<KnowledgeBase> {
+  const res = await fetch(`${BASE}/kb/`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  })
+  return handleResponse<KnowledgeBase>(res)
+}
+
+export async function updateKnowledgeBase(
+  kbId: string,
+  data: { name?: string; description?: string; system_prompt?: string; color?: string }
+): Promise<KnowledgeBase> {
+  const res = await fetch(`${BASE}/kb/${kbId}`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  })
+  return handleResponse<KnowledgeBase>(res)
+}
+
+export async function deleteKnowledgeBase(kbId: string): Promise<null> {
+  const res = await fetch(`${BASE}/kb/${kbId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return handleResponse<null>(res)
+}
+
+export async function getKbDocuments(kbId: string): Promise<Document[]> {
+  const res = await fetch(`${BASE}/kb/${kbId}/docs`, { headers: authHeaders() })
+  return handleResponse<Document[]>(res)
+}
+
+export async function addDocToKb(kbId: string, docId: string): Promise<null> {
+  const res = await fetch(`${BASE}/kb/${kbId}/docs/${docId}`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return handleResponse<null>(res)
+}
+
+export async function removeDocFromKb(kbId: string, docId: string): Promise<null> {
+  const res = await fetch(`${BASE}/kb/${kbId}/docs/${docId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return handleResponse<null>(res)
+}
+
+export async function clearKbSession(kbId: string, sessionId: string): Promise<null> {
+  const res = await fetch(`${BASE}/chat/kb/session/${kbId}/${sessionId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return handleResponse<null>(res)
+}
+
+export async function* streamKbMessage(
+  kbId: string,
+  question: string,
+  sessionId: string | null
+): AsyncGenerator<StreamEvent> {
+  const res = await fetch(`${BASE}/chat/kb/stream`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ kb_id: kbId, question, session_id: sessionId }),
+  })
+
+  if (res.status === 401) throw new Error('Unauthorized')
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(err.detail ?? `Error ${res.status}`)
+  }
+
+  const reader = res.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') return
+      try { yield JSON.parse(data) as StreamEvent } catch { /* ignore */ }
+    }
+  }
 }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FileText, BookOpen, Layers, MessageSquare,
-  LayoutDashboard, Sparkles,
+  LayoutDashboard, Sparkles, Library, FolderOpen,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -11,8 +11,8 @@ import {
 import { SidebarLayout } from '@/components/AppSidebar'
 import type { NavItem } from '@/components/AppSidebar'
 import { cn } from '@/lib/utils'
-import { listDocuments } from '../api'
-import type { Document } from '../types'
+import { listDocuments, listKnowledgeBases } from '../api'
+import type { Document, KnowledgeBase } from '../types'
 
 // ── Shared nav ────────────────────────────────────────────────────────────────
 
@@ -26,6 +26,15 @@ export const APP_NAV: NavItem[] = [
 function nameFromEmail(email: string) {
   const prefix = email.split('@')[0]
   return prefix.charAt(0).toUpperCase() + prefix.slice(1)
+}
+
+const KB_COLORS: Record<string, { dot: string; bg: string; text: string; ring: string }> = {
+  blue:    { dot: 'bg-blue-500',    bg: 'bg-blue-500/8',    text: 'text-blue-600 dark:text-blue-400',    ring: 'ring-blue-500/20' },
+  violet:  { dot: 'bg-violet-500',  bg: 'bg-violet-500/8',  text: 'text-violet-600 dark:text-violet-400',  ring: 'ring-violet-500/20' },
+  emerald: { dot: 'bg-emerald-500', bg: 'bg-emerald-500/8', text: 'text-emerald-600 dark:text-emerald-400', ring: 'ring-emerald-500/20' },
+  amber:   { dot: 'bg-amber-500',   bg: 'bg-amber-500/8',   text: 'text-amber-600 dark:text-amber-400',   ring: 'ring-amber-500/20' },
+  pink:    { dot: 'bg-pink-500',    bg: 'bg-pink-500/8',    text: 'text-pink-600 dark:text-pink-400',    ring: 'ring-pink-500/20' },
+  slate:   { dot: 'bg-slate-500',   bg: 'bg-slate-500/8',   text: 'text-slate-600 dark:text-slate-400',   ring: 'ring-slate-500/20' },
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
@@ -66,7 +75,7 @@ function ChartTooltip({ active, payload, label }: {
 }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="rounded-xl border bg-card shadow-lg px-3 py-2 text-xs">
+    <div className="rounded-xl border bg-white dark:bg-zinc-900 shadow-lg px-3 py-2 text-xs">
       <p className="font-medium text-foreground">{label}</p>
       <p className="text-muted-foreground">
         {payload[0].value} doc{payload[0].value !== 1 ? 's' : ''}
@@ -82,12 +91,13 @@ export default function DashboardPage() {
   const email = localStorage.getItem('user-email') ?? ''
   const user = { name: nameFromEmail(email) || 'Utilisateur', email }
 
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [documents,      setDocuments]      = useState<Document[]>([])
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
+  const [isLoading,      setIsLoading]      = useState(true)
 
   useEffect(() => {
-    listDocuments()
-      .then(setDocuments)
+    Promise.all([listDocuments(), listKnowledgeBases()])
+      .then(([docs, kbs]) => { setDocuments(docs); setKnowledgeBases(kbs) })
       .catch(() => {})
       .finally(() => setIsLoading(false))
   }, [])
@@ -100,11 +110,11 @@ export default function DashboardPage() {
 
   // ── Derived stats ──────────────────────────────────────────────────────
 
-  const totalPages = documents.reduce((acc, d) => acc + (d.page_count ?? 0), 0)
+  const totalPages  = documents.reduce((acc, d) => acc + (d.page_count ?? 0), 0)
   const totalChunks = documents.reduce((acc, d) => acc + (d.chunk_count ?? 0), 0)
-  const msgCount = parseInt(localStorage.getItem('msg-count') ?? '0')
+  const msgCount    = parseInt(localStorage.getItem('msg-count') ?? '0')
+  const totalKbDocs = knowledgeBases.reduce((acc, kb) => acc + kb.doc_ids.length, 0)
 
-  // Last 7 days activity chart
   const chartData = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
     d.setDate(d.getDate() - (6 - i))
@@ -144,8 +154,8 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {/* Stat cards */}
-          <div className="flex gap-4">
+          {/* Stat cards — 5 cols */}
+          <div className="grid grid-cols-5 gap-3">
             <StatCard
               icon={FileText}
               label="Documents"
@@ -154,24 +164,31 @@ export default function DashboardPage() {
               sub={`${Math.max(0, 10 - documents.length)} slots remaining`}
             />
             <StatCard
+              icon={Library}
+              label="Knowledge Bases"
+              value={isLoading ? '—' : knowledgeBases.length}
+              colorClass="bg-violet-500/10 text-violet-500"
+              sub={`${totalKbDocs} documents linked`}
+            />
+            <StatCard
               icon={BookOpen}
               label="Pages indexed"
               value={isLoading ? '—' : totalPages}
-              colorClass="bg-violet-500/10 text-violet-500"
+              colorClass="bg-emerald-500/10 text-emerald-500"
               sub="across all documents"
             />
             <StatCard
               icon={Layers}
-              label="Chunks indexed"
+              label="Chunks"
               value={isLoading ? '—' : totalChunks}
-              colorClass="bg-emerald-500/10 text-emerald-500"
-              sub="semantic + BM25 search"
+              colorClass="bg-amber-500/10 text-amber-500"
+              sub="semantic + BM25"
             />
             <StatCard
               icon={MessageSquare}
-              label="Messages sent"
+              label="Messages"
               value={msgCount}
-              colorClass="bg-amber-500/10 text-amber-500"
+              colorClass="bg-pink-500/10 text-pink-500"
               sub="total Q&A exchanges"
             />
           </div>
@@ -179,7 +196,7 @@ export default function DashboardPage() {
           {/* Chart + Recent docs */}
           <div className="grid grid-cols-3 gap-4">
 
-            {/* Indexing activity bar chart */}
+            {/* Indexing activity */}
             <div className="col-span-2 rounded-2xl border bg-card p-5 shadow-sm">
               <h3 className="text-sm font-semibold">Indexing activity</h3>
               <p className="text-xs text-muted-foreground mt-0.5 mb-6">
@@ -264,6 +281,72 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+
+          {/* Knowledge Bases section */}
+          {(isLoading || knowledgeBases.length > 0) && (
+            <div className="rounded-2xl border bg-card p-5 shadow-sm flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold">Knowledge Bases</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {knowledgeBases.length} collection{knowledgeBases.length !== 1 ? 's' : ''} · {totalKbDocs} document{totalKbDocs !== 1 ? 's' : ''} linked
+                  </p>
+                </div>
+                <button
+                  onClick={() => navigate('/app')}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Manage →
+                </button>
+              </div>
+
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                  <div className="h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  Loading…
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {knowledgeBases.map(kb => {
+                    const c = KB_COLORS[kb.color] ?? KB_COLORS.blue
+                    return (
+                      <div
+                        key={kb.id}
+                        onClick={() => navigate('/app')}
+                        className={cn(
+                          'flex flex-col gap-3 p-4 rounded-xl border cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5',
+                          c.bg, `ring-1 ${c.ring}`
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={cn('h-7 w-7 rounded-lg flex items-center justify-center', c.bg)}>
+                            <Library className={cn('h-3.5 w-3.5', c.text)} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className={cn('text-xs font-semibold truncate', c.text)}>{kb.name}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {kb.doc_ids.length} doc{kb.doc_ids.length !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                        </div>
+                        {kb.description && (
+                          <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
+                            {kb.description}
+                          </p>
+                        )}
+                        {kb.doc_ids.length === 0 && (
+                          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
+                            <FolderOpen className="h-3 w-3" />
+                            Empty — upload PDFs via right-click
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Tech stack */}
           <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-border/50">
