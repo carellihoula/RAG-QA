@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   FileText, MessageSquare, ArrowRight,
   Upload, Zap, Shield, Search, Check, Sparkles,
-  Layers, ChevronRight,
+  Globe, BookOpen, Atom, Rss, Table, ChevronRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ModeToggle } from '@/components/ModeToggle'
@@ -10,11 +10,28 @@ import { cn } from '@/lib/utils'
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 
+const SOURCE_TYPES = [
+  { label: 'PDF',        icon: FileText,  color: 'text-red-400'     },
+  { label: 'Word',       icon: FileText,  color: 'text-blue-400'    },
+  { label: 'PowerPoint', icon: FileText,  color: 'text-orange-400'  },
+  { label: 'Excel',      icon: Table,     color: 'text-green-400'   },
+  { label: 'Web URL',    icon: Globe,     color: 'text-violet-400'  },
+  { label: 'Wikipedia',  icon: BookOpen,  color: 'text-slate-400'   },
+  { label: 'ArXiv',      icon: Atom,      color: 'text-violet-400'  },
+  { label: 'RSS',        icon: Rss,       color: 'text-amber-400'   },
+]
+
 const features = [
   {
+    icon: Globe,
+    title: 'Multiple sources',
+    description: 'PDF, Word, PowerPoint, Excel, web pages, Wikipedia articles, ArXiv papers, and RSS feeds — all in one workspace.',
+    color: 'text-emerald-500 bg-emerald-500/10',
+  },
+  {
     icon: Search,
-    title: 'Hybrid Search',
-    description: 'Combines BM25 keyword matching with semantic vector search for the most relevant results.',
+    title: 'Hybrid search',
+    description: 'Combines BM25 keyword matching with semantic vector search for the most relevant results across all your sources.',
     color: 'text-blue-500 bg-blue-500/10',
   },
   {
@@ -30,15 +47,9 @@ const features = [
     color: 'text-amber-500 bg-amber-500/10',
   },
   {
-    icon: Layers,
-    title: 'Smart chunking',
-    description: 'Documents split with RecursiveCharacterTextSplitter and overlap for context continuity.',
-    color: 'text-emerald-500 bg-emerald-500/10',
-  },
-  {
     icon: MessageSquare,
     title: 'Session memory',
-    description: 'Follow-up questions work naturally. Conversation history is maintained per document.',
+    description: 'Follow-up questions work naturally. Conversation history is maintained per source.',
     color: 'text-pink-500 bg-pink-500/10',
   },
   {
@@ -53,25 +64,25 @@ const steps = [
   {
     step: '01',
     icon: Upload,
-    title: 'Upload your PDF',
-    desc: 'Drag & drop your document. It gets parsed, chunked, and indexed into a FAISS vector store in seconds.',
+    title: 'Add a source',
+    desc: 'Drag & drop a file or paste a URL. PDFs, Word docs, spreadsheets, web pages, Wikipedia articles, ArXiv papers — indexed in seconds.',
   },
   {
     step: '02',
     icon: MessageSquare,
     title: 'Ask a question',
-    desc: 'Type your question in plain English. Hybrid search retrieves the most relevant chunks from your document.',
+    desc: 'Type your question in plain English. Hybrid search retrieves the most relevant chunks from your sources.',
   },
   {
     step: '03',
     icon: Sparkles,
     title: 'Get cited answers',
-    desc: 'GPT-4o-mini generates an answer grounded in retrieved context, with page-level source citations.',
+    desc: 'GPT-4o-mini generates an answer grounded in retrieved context, with source-level citations.',
   },
 ]
 
 const stack = [
-  'FastAPI', 'LangChain', 'FAISS', 'OpenAI GPT-4o-mini',
+  'FastAPI', 'LangChain', 'FAISS', 'BM25', 'OpenAI GPT-4o-mini',
   'React', 'TypeScript', 'Tailwind CSS', 'SQLite',
 ]
 
@@ -80,11 +91,11 @@ const plans = [
     name: 'Free',
     price: '$0',
     period: 'forever',
-    description: 'Everything you need to get started with AI-powered document Q&A.',
+    description: 'Everything you need to get started with AI-powered multi-source Q&A.',
     cta: 'Get started',
     primary: false,
     badge: null,
-    features: ['10 documents', 'Unlimited questions', 'Hybrid BM25 + semantic search', 'Source citations', 'Streaming responses', 'Dark mode'],
+    features: ['10 sources (PDF, web, Wikipedia…)', 'Unlimited questions', 'Hybrid BM25 + semantic search', 'Source citations', 'Streaming responses', 'Dark mode'],
   },
   {
     name: 'Pro',
@@ -94,7 +105,7 @@ const plans = [
     cta: 'Coming soon',
     primary: true,
     badge: 'Soon',
-    features: ['Unlimited documents', 'Priority indexing', 'REST API access', 'Custom chunk settings', 'Export conversations', 'Multi-source search'],
+    features: ['Unlimited sources', 'Priority indexing', 'REST API access', 'Custom chunk settings', 'Export conversations', 'Knowledge base grouping'],
   },
 ]
 
@@ -103,15 +114,24 @@ const plans = [
 function MockChat() {
   return (
     <div className="rounded-2xl border bg-card shadow-2xl shadow-black/10 dark:shadow-black/30 overflow-hidden">
-      {/* header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b bg-muted/30">
-        <div className="h-5 w-5 rounded-md bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-          <FileText className="h-2.5 w-2.5 text-blue-400" />
-        </div>
-        <span className="text-xs font-medium flex-1 truncate">research-paper.pdf</span>
-        <span className="text-[10px] bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded-full font-medium flex-shrink-0">
-          42p · 168 chunks
-        </span>
+      {/* source tabs */}
+      <div className="flex items-center gap-1.5 px-3 pt-3 pb-2 border-b bg-muted/20">
+        {[
+          { icon: FileText, label: 'report.pdf',    color: 'bg-red-500/10 border-red-500/20',    iconColor: 'text-red-400',    active: false },
+          { icon: Globe,    label: 'arxiv.org/…',   color: 'bg-violet-500/10 border-violet-500/20', iconColor: 'text-violet-400', active: true  },
+          { icon: BookOpen, label: 'Wikipedia',      color: 'bg-slate-500/10 border-slate-500/20', iconColor: 'text-slate-400',  active: false },
+        ].map(({ icon: Icon, label, color, iconColor, active }) => (
+          <div
+            key={label}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-medium',
+              active ? color + ' text-foreground' : 'border-transparent text-muted-foreground/50',
+            )}
+          >
+            <Icon className={cn('h-2.5 w-2.5', iconColor)} />
+            <span className="truncate max-w-[60px]">{label}</span>
+          </div>
+        ))}
       </div>
 
       {/* messages */}
@@ -122,7 +142,7 @@ function MockChat() {
             <span className="text-[9px] font-bold text-zinc-200">You</span>
           </div>
           <div className="max-w-[78%] rounded-xl rounded-tr-sm bg-blue-600 text-white px-3 py-2 text-xs leading-relaxed">
-            What are the main conclusions of this study?
+            How do transformers handle long-range dependencies?
           </div>
         </div>
 
@@ -132,10 +152,10 @@ function MockChat() {
             <Sparkles className="h-3 w-3 text-white" />
           </div>
           <div className="max-w-[78%] rounded-xl rounded-tl-sm bg-muted border px-3 py-2 text-xs leading-relaxed">
-            <p>The study concludes that hybrid retrieval outperforms dense-only methods by <strong>23%</strong> on recall@5, especially for domain-specific terminology.</p>
+            <p>Transformers use <strong>self-attention</strong> to compute pairwise relationships between all tokens simultaneously, giving them O(1) path length between any two positions regardless of sequence length.</p>
             <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border/40">
               <ChevronRight className="h-2.5 w-2.5 opacity-40" />
-              <span className="text-[10px] opacity-50">2 sources · Page 8 · Page 12</span>
+              <span className="text-[10px] opacity-50">3 sources · Section 3.2 · Section 5</span>
             </div>
           </div>
         </div>
@@ -168,12 +188,12 @@ export default function HomePage() {
       {/* ── Navbar ─────────────────────────────────────────────────── */}
       <nav className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-3.5">
-          <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-sm">
               <span className="text-white font-bold text-xs">R</span>
             </div>
             <span className="font-bold tracking-tight text-sm">RAG Q&amp;A</span>
-          </div>
+          </button>
 
           <div className="hidden md:flex items-center gap-6">
             <a href="#features"     className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
@@ -205,19 +225,33 @@ export default function HomePage() {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border bg-muted/60 text-xs font-medium text-muted-foreground mb-6">
               <Sparkles className="h-3 w-3 text-blue-400" />
-              Hybrid BM25 + semantic search · GPT-4o-mini
+              8+ source types · BM25 + semantic search · GPT-4o-mini
             </div>
             <h1 className="text-5xl font-extrabold tracking-tight leading-[1.1] mb-5">
-              Chat with your{' '}
+              Chat with any{' '}
               <span className="bg-gradient-to-r from-blue-500 to-violet-600 bg-clip-text text-transparent">
-                documents
+                source
               </span>
               , instantly.
             </h1>
-            <p className="text-lg text-muted-foreground leading-relaxed mb-8 max-w-md">
-              Upload a PDF, ask questions in plain English, and get accurate
-              answers grounded in the document — with exact page citations.
+            <p className="text-lg text-muted-foreground leading-relaxed mb-6 max-w-md">
+              Add PDFs, Word docs, web pages, Wikipedia articles, ArXiv papers, or RSS feeds.
+              Ask questions in plain English and get accurate answers — with exact source citations.
             </p>
+
+            {/* Source type pills */}
+            <div className="flex flex-wrap items-center gap-2 mb-8">
+              {SOURCE_TYPES.map(({ label, icon: Icon, color }) => (
+                <span
+                  key={label}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-muted/60 border text-xs text-muted-foreground"
+                >
+                  <Icon className={cn('h-3 w-3', color)} />
+                  {label}
+                </span>
+              ))}
+            </div>
+
             <div className="flex items-center gap-3 flex-wrap">
               <Button
                 size="lg"
@@ -231,7 +265,7 @@ export default function HomePage() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground/50 mt-4">
-              No credit card required · Free plan includes 10 documents
+              No credit card required · Free plan includes 10 sources
             </p>
           </div>
 
@@ -246,8 +280,8 @@ export default function HomePage() {
       <section className="border-y bg-muted/30 px-6 py-8">
         <div className="max-w-4xl mx-auto grid grid-cols-3 gap-8 text-center">
           {[
+            { value: '8+ formats',      label: 'Source types' },
             { value: 'BM25 + Semantic', label: 'Hybrid retrieval' },
-            { value: 'GPT-4o-mini',     label: 'AI model' },
             { value: 'SSE streaming',   label: 'Real-time answers' },
           ].map(stat => (
             <div key={stat.label}>
@@ -407,10 +441,10 @@ export default function HomePage() {
             <Sparkles className="h-6 w-6 text-blue-400" />
           </div>
           <h2 className="text-3xl font-bold tracking-tight mb-4">
-            Ready to talk to your documents?
+            Ready to chat with your sources?
           </h2>
           <p className="text-muted-foreground mb-8 text-sm leading-relaxed max-w-sm mx-auto">
-            Start for free — no credit card required. Your first document is indexed in under 10 seconds.
+            Start for free — no credit card required. Your first source is indexed in under 10 seconds.
           </p>
           <Button
             size="lg"
@@ -425,12 +459,12 @@ export default function HomePage() {
       {/* ── Footer ───────────────────────────────────────────────────── */}
       <footer className="border-t px-6 py-5">
         <div className="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <div className="h-6 w-6 rounded-md bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center">
               <span className="text-white font-bold text-[10px]">R</span>
             </div>
             <span className="text-sm font-semibold">RAG Q&amp;A</span>
-          </div>
+          </button>
           <p className="text-xs text-muted-foreground">
             Built with FastAPI · LangChain · FAISS · OpenAI · React · TypeScript
           </p>

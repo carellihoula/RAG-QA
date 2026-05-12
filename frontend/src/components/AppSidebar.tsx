@@ -327,14 +327,17 @@ function SidebarInner({
           )}
         >
           {isOpen && (
-            <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/')}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            >
               <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-sm flex-shrink-0">
                 <span className="text-white font-bold text-xs">R</span>
               </div>
               <span className="font-semibold text-sidebar-foreground text-sm tracking-tight">
                 RAG Q&amp;A
               </span>
-            </div>
+            </button>
           )}
           <button
             onClick={onToggle}
