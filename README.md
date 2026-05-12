@@ -1,8 +1,20 @@
-# RAG Document Q&A
+# RAG Q&A
 
-Chat with your PDF documents in natural language. Upload a PDF, ask questions, and get answers grounded in the document's content — with source references.
+Chat with your documents and web sources in natural language. Upload files, import from the web, organize into Knowledge Bases, and get answers grounded in your content — with source references and streaming responses.
 
-**Stack:** FastAPI · LangChain · FAISS · OpenAI · React · Docker
+**Stack:** FastAPI · LangChain · FAISS · BM25 · OpenAI · React · TypeScript · Docker
+
+---
+
+## Features
+
+- **Multi-format ingestion** — PDF, Word, PowerPoint, Excel, CSV, TXT, Markdown, HTML
+- **Web sources** — scrape any public URL, Wikipedia articles, arXiv papers, RSS feeds
+- **Knowledge Bases** — group documents into collections and chat across all of them at once
+- **Hybrid retrieval** — BM25 + FAISS semantic search combined for better recall
+- **Streaming chat** — answers stream token by token via Server-Sent Events
+- **Conversational memory** — session history maintained per document / knowledge base
+- **Auth** — JWT-based authentication (register / login)
 
 ---
 
@@ -33,38 +45,68 @@ docker compose up --build
 ## Architecture
 
 ```
-┌─────────────────┐        ┌──────────────────────────────────┐
-│  React frontend │ :3000  │  FastAPI backend            :8000│
-│  (nginx)        │───────▶│                                  │
-│                 │        │  ┌─────────┐   ┌──────────────┐  │
-└─────────────────┘        │  │  FAISS  │   │  LangChain   │  │
-                           │  │  index  │◀──│  RAG chain   │  │
-                           │  └─────────┘   └──────┬───────┘  │
-                           │                       │          │
-                           └───────────────────────┼──────────┘
-                                                   │
-                                             OpenAI API
-                                      (embeddings + chat)
+┌─────────────────┐        ┌──────────────────────────────────────┐
+│  React frontend │ :3000  │  FastAPI backend                :8000 │
+│  (nginx)        │───────▶│                                      │
+│                 │        │  ┌──────────┐   ┌────────────────┐   │
+└─────────────────┘        │  │  FAISS   │   │   LangChain    │   │
+                           │  │  index   │◀──│  RAG pipeline  │   │
+                           │  └──────────┘   └───────┬────────┘   │
+                           │  ┌──────────┐           │            │
+                           │  │   BM25   │◀──────────┘            │
+                           │  └──────────┘                        │
+                           │  ┌──────────┐                        │
+                           │  │ SQLite   │  users, knowledge bases │
+                           │  └──────────┘                        │
+                           └──────────────────────┬───────────────┘
+                                                  │
+                                            OpenAI API
+                                     (embeddings + chat)
 ```
 
-**Flow:** PDF upload → text extraction → chunking → OpenAI embeddings → FAISS index. On each question, the top-k relevant chunks are retrieved and injected into the LLM prompt alongside the conversation history.
+**Retrieval flow:** query → BM25 sparse retrieval + FAISS dense retrieval → EnsembleRetriever fusion → top-k chunks → LLM prompt + conversation history → streamed answer.
 
 ---
 
 ## API endpoints
 
-| Method   | Route                              | Description                     |
-| -------- | ---------------------------------- | ------------------------------- |
-| `POST`   | `/api/v1/documents/`               | Upload and index a PDF          |
-| `GET`    | `/api/v1/documents/`               | List all indexed documents      |
-| `DELETE` | `/api/v1/documents/{id}`           | Delete a document and its index |
-| `POST`   | `/api/v1/chat/`                    | Ask a question about a document |
-| `DELETE` | `/api/v1/chat/session/{sid}/{did}` | Clear a conversation session    |
+### Documents
+| Method   | Route                              | Description                          |
+| -------- | ---------------------------------- | ------------------------------------ |
+| `POST`   | `/api/v1/documents/`               | Upload and index a file              |
+| `POST`   | `/api/v1/documents/from-url`       | Import from URL / Wikipedia / arXiv / RSS |
+| `GET`    | `/api/v1/documents/`               | List all documents                   |
+| `DELETE` | `/api/v1/documents/{id}`           | Delete a document                    |
+
+### Chat
+| Method   | Route                              | Description                          |
+| -------- | ---------------------------------- | ------------------------------------ |
+| `POST`   | `/api/v1/chat/stream`              | Streaming Q&A on a document (SSE)    |
+| `POST`   | `/api/v1/chat/kb/stream`           | Streaming Q&A on a Knowledge Base    |
+| `DELETE` | `/api/v1/chat/session/{sid}/{did}` | Clear a document session             |
+| `DELETE` | `/api/v1/chat/kb/session/{kb}/{sid}` | Clear a KB session                 |
+
+### Knowledge Bases
+| Method   | Route                              | Description                          |
+| -------- | ---------------------------------- | ------------------------------------ |
+| `POST`   | `/api/v1/knowledge-bases/`         | Create a Knowledge Base              |
+| `GET`    | `/api/v1/knowledge-bases/`         | List Knowledge Bases                 |
+| `PATCH`  | `/api/v1/knowledge-bases/{id}`     | Rename / update a Knowledge Base     |
+| `DELETE` | `/api/v1/knowledge-bases/{id}`     | Delete a Knowledge Base              |
+| `POST`   | `/api/v1/knowledge-bases/{id}/docs` | Add a document to a KB             |
+| `DELETE` | `/api/v1/knowledge-bases/{id}/docs/{doc_id}` | Remove a document from a KB |
+
+### Auth
+| Method   | Route                    | Description        |
+| -------- | ------------------------ | ------------------ |
+| `POST`   | `/api/v1/auth/register`  | Create an account  |
+| `POST`   | `/api/v1/auth/login`     | Obtain a JWT token |
 
 ---
 
-## Local development (backend only)
+## Local development
 
+**Backend**
 ```bash
 cd backend
 python -m venv venv && source venv/bin/activate
@@ -73,15 +115,14 @@ cp ../.env.example .env   # then set OPENAI_API_KEY
 uvicorn app.main:app --reload --port 8000
 ```
 
-## Local development (frontend only)
-
+**Frontend**
 ```bash
 cd frontend
 npm install
 npm run dev   # runs on http://localhost:5173
 ```
 
-> Requires the backend to be running on port 8000 (Vite proxies `/api` requests automatically).
+> Requires the backend running on port 8000 — Vite proxies `/api` requests automatically.
 
 ---
 
@@ -93,6 +134,8 @@ All RAG parameters can be tuned in `backend/app/config.py`:
 | ----------------- | ------------------------ | ------------------------------------ |
 | `chunk_size`      | 1000                     | Characters per chunk                 |
 | `chunk_overlap`   | 200                      | Overlap between chunks               |
-| `retriever_k`     | 4                        | Number of chunks retrieved per query |
+| `retriever_k`     | 4                        | Chunks retrieved per query           |
+| `bm25_weight`     | 0.5                      | Weight of BM25 in hybrid retrieval   |
+| `dense_weight`    | 0.5                      | Weight of FAISS in hybrid retrieval  |
 | `embedding_model` | `text-embedding-3-small` | OpenAI embedding model               |
 | `llm_model`       | `gpt-4o-mini`            | OpenAI chat model                    |
