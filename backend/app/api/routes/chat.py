@@ -13,7 +13,7 @@ from app.models.user import User
 from app.models.knowledge_base import KnowledgeBase
 from app.models.schemas import ChatRequest, ChatResponse, KBChatRequest
 
-router = APIRouter(prefix="/chat", tags=["chat"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/chat", tags=["chat"])
 doc_service = DocumentService()
 
 SSE_HEADERS = {
@@ -24,9 +24,9 @@ SSE_HEADERS = {
 
 
 @router.post("/", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, current_user: User = Depends(get_current_user)):
     """Non-streaming endpoint (kept for compatibility)."""
-    doc_service.require_doc(request.doc_id)
+    doc_service.require_doc(request.doc_id, user_id=str(current_user.id))
     session_id = request.session_id or str(uuid.uuid4())
     loop = asyncio.get_event_loop()
     try:
@@ -41,7 +41,7 @@ async def chat(request: ChatRequest):
 
 
 @router.post("/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(request: ChatRequest, current_user: User = Depends(get_current_user)):
     """
     Streaming endpoint via Server-Sent Events.
     Emits:
@@ -49,7 +49,7 @@ async def chat_stream(request: ChatRequest):
       data: {"type":"sources","sources":[...],"session_id":"..."}
       data: [DONE]
     """
-    doc_service.require_doc(request.doc_id)
+    doc_service.require_doc(request.doc_id, user_id=str(current_user.id))
     session_id = request.session_id or str(uuid.uuid4())
 
     async def generate():

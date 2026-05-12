@@ -1,4 +1,5 @@
-from pydantic import BaseModel, ConfigDict
+import uuid
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Literal, Optional
 from datetime import datetime
 
@@ -70,6 +71,7 @@ class UserCreate(BaseModel):
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
 
 
@@ -77,6 +79,44 @@ class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     email: str
+    display_name: Optional[str] = None
+    is_active: bool = True
+    created_at: datetime
+
+    @field_validator('id', mode='before')
+    @classmethod
+    def coerce_id(cls, v):
+        return str(v)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
+class UpdateProfileRequest(BaseModel):
+    display_name: Optional[str] = None
+
+
+class ActivateRequest(BaseModel):
+    token: str
+
+
+class MessageResponse(BaseModel):
+    message: str
 
 
 class ErrorResponse(BaseModel):

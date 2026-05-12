@@ -26,7 +26,22 @@ class Settings(BaseSettings):
     # JWT
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
-    jwt_expiry_minutes: int = 60 * 24 * 7  # 7 days
+    access_token_expire_minutes: int = 15          # short-lived access token
+    refresh_token_expire_days: int = 30            # long-lived refresh token
+    reset_token_expire_hours: int = 1              # password reset window
+    # Keep legacy alias so existing code still works
+    jwt_expiry_minutes: int = 15
+
+    # Email / SMTP
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_from_name: str = "RAG Q&A"
+
+    # Base URL of the frontend (used in email links)
+    frontend_url: str = "http://localhost:3000"
 
     # CORS
     allowed_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]

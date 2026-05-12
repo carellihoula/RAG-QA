@@ -10,10 +10,13 @@ import {
   Menu,
   LogOut,
   User,
-  Bell,
-  SlidersHorizontal,
+  Lock,
   X,
 } from "lucide-react";
+import { getMe, logoutApi } from "@/api";
+import type { UserProfile } from "@/types";
+import { ChangePasswordModal } from "@/components/auth/ChangePasswordModal";
+import { EditProfileModal } from "@/components/auth/EditProfileModal";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -26,6 +29,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -184,108 +188,107 @@ interface ProfileProps {
 }
 
 function SidebarProfile({ user, isOpen, onLogout }: ProfileProps) {
-  const navigate = useNavigate();
+  const [profile,          setProfile]          = useState<UserProfile | null>(null);
+  const [showChangePwd,    setShowChangePwd]    = useState(false);
+  const [showEditProfile,  setShowEditProfile]  = useState(false);
+
+  useEffect(() => {
+    getMe().then(setProfile).catch(() => {});
+  }, []);
+
+  const displayName = profile?.display_name ?? user.name;
+  const email       = profile?.email        ?? user.email;
+
+  async function handleLogout() {
+    await logoutApi();
+    onLogout();
+  }
 
   const avatar = (
     <Avatar className="h-8 w-8 flex-shrink-0 ring-2 ring-border">
-      {user.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
+      {user.avatar && <AvatarImage src={user.avatar} alt={displayName} />}
       <AvatarFallback className="bg-gradient-to-br from-blue-500 to-violet-600 text-white text-xs">
-        {getInitials(user.name)}
+        {getInitials(displayName)}
       </AvatarFallback>
     </Avatar>
   );
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          aria-label="Profile menu"
-          className={cn(
-            "w-full flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors outline-none",
-            "hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring",
-            !isOpen && "justify-center",
-          )}
-        >
-          {avatar}
-          {isOpen && (
-            <div className="flex-1 min-w-0 text-left">
-              <p className="text-xs font-semibold text-sidebar-foreground truncate">
-                {user.name}
-              </p>
-              <p className="text-[10px] text-sidebar-muted-foreground truncate">
-                {user.email}
-              </p>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            aria-label="Profile menu"
+            className={cn(
+              "w-full flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors outline-none",
+              "hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring",
+              !isOpen && "justify-center",
+            )}
+          >
+            {avatar}
+            {isOpen && (
+              <div className="flex-1 min-w-0 text-left">
+                <p className="text-xs font-semibold text-sidebar-foreground truncate">
+                  {displayName}
+                </p>
+                <p className="text-[10px] text-sidebar-muted-foreground truncate">
+                  {email}
+                </p>
+              </div>
+            )}
+          </button>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent side="right" align="end" sideOffset={8} className="w-60 shadow-xl">
+
+          {/* Header */}
+          <div className="flex items-center gap-3 px-2 py-2.5 mb-1 rounded-md bg-muted/60">
+            <Avatar className="h-9 w-9 flex-shrink-0">
+              {user.avatar && <AvatarImage src={user.avatar} alt={displayName} />}
+              <AvatarFallback className="bg-gradient-to-br from-blue-500 to-violet-600 text-white text-xs">
+                {getInitials(displayName)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
+              <p className="text-xs text-muted-foreground truncate">{email}</p>
             </div>
-          )}
-        </button>
-      </DropdownMenuTrigger>
-
-      <DropdownMenuContent
-        side="right"
-        align="end"
-        sideOffset={8}
-        className="w-60 shadow-xl"
-      >
-        {/* Header — non-interactive */}
-        <div className="flex items-center gap-3 px-2 py-2.5 mb-1 rounded-md bg-muted/60">
-          <Avatar className="h-9 w-9 flex-shrink-0">
-            {user.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
-            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-violet-600 text-white text-xs">
-              {getInitials(user.name)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground truncate">
-              {user.name}
-            </p>
-            <p className="text-xs text-muted-foreground truncate">
-              {user.email}
-            </p>
           </div>
-        </div>
 
-        <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 py-1">
+            Account
+          </DropdownMenuLabel>
 
-        <DropdownMenuItem
-          onClick={() => navigate("/profile")}
-          className="text-foreground"
-        >
-          <User className="h-4 w-4" />
-          Profile
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => navigate("/settings/personal")}
-          className="text-foreground"
-        >
-          <User className="h-4 w-4" />
-          Personal Information
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => navigate("/settings/preferences")}
-          className="text-foreground"
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-          Preferences
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => navigate("/settings/notifications")}
-          className="text-foreground"
-        >
-          <Bell className="h-4 w-4" />
-          Notifications
-        </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setShowEditProfile(true)} className="text-foreground">
+            <User className="h-4 w-4" />
+            Edit profile
+          </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setShowChangePwd(true)} className="text-foreground">
+            <Lock className="h-4 w-4" />
+            Change password
+          </DropdownMenuItem>
 
-        <DropdownMenuItem
-          onClick={onLogout}
-          className="text-destructive focus:text-destructive focus:bg-destructive/10"
-        >
-          <LogOut className="h-4 w-4" />
-          Logout
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            onClick={handleLogout}
+            className="text-destructive focus:text-destructive focus:bg-destructive/10"
+          >
+            <LogOut className="h-4 w-4" />
+            Log out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <ChangePasswordModal open={showChangePwd} onOpenChange={setShowChangePwd} />
+      <EditProfileModal
+        open={showEditProfile}
+        onOpenChange={setShowEditProfile}
+        profile={profile}
+        onUpdated={setProfile}
+      />
+    </>
   );
 }
 

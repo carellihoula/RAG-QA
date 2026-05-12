@@ -9,16 +9,20 @@ from app.services.rag_service import rag_service
 from app.services.auth_service import get_current_user
 from app.models.schemas import DocumentResponse, DocumentListItem, ChunkItem, DocumentUrlRequest
 from app.models.knowledge_base import KBDocument
+from app.models.user import User
 from app.database import get_db
 from app.loaders.file_loader import load_file
 from app.loaders.web_loader import load_web
 
-router = APIRouter(prefix='/documents', tags=['documents'], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix='/documents', tags=['documents'])
 doc_service = DocumentService()
 
 
 @router.post('/', response_model=DocumentResponse, status_code=201)
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
     """Uploads any supported file, indexes it, then generates an AI title."""
     doc_id, file_path = await doc_service.save_upload(file)
 
@@ -46,12 +50,16 @@ async def upload_document(file: UploadFile = File(...)):
         doc_id, file.filename, title, response.indexed_at,
         response.page_count, response.chunk_count,
         source_type=source_type,
+        user_id=str(current_user.id),
     )
     return response.model_copy(update={'title': title})
 
 
 @router.post('/from-url', response_model=DocumentResponse, status_code=201)
-async def import_from_url(body: DocumentUrlRequest):
+async def import_from_url(
+    body: DocumentUrlRequest,
+    current_user: User = Depends(get_current_user),
+):
     """Imports a web source (URL, YouTube, Wikipedia, arXiv, RSS) and indexes it."""
     loop = asyncio.get_event_loop()
     try:
@@ -86,18 +94,19 @@ async def import_from_url(body: DocumentUrlRequest):
         response.page_count, response.chunk_count,
         source_type=source_type,
         source_url=body.url,
+        user_id=str(current_user.id),
     )
     return response.model_copy(update={'title': title, 'filename': auto_title})
 
 
 @router.get('/', response_model=list[DocumentListItem])
-def list_documents():
-    return doc_service.list_documents()
+def list_documents(current_user: User = Depends(get_current_user)):
+    return doc_service.list_documents(user_id=str(current_user.id))
 
 
 @router.get('/{doc_id}/chunks', response_model=list[ChunkItem])
-def get_document_chunks(doc_id: str):
-    doc_service.require_doc(doc_id)
+def get_document_chunks(doc_id: str, current_user: User = Depends(get_current_user)):
+    doc_service.require_doc(doc_id, user_id=str(current_user.id))
     try:
         return rag_service.get_chunks(doc_id)
     except ValueError as e:
@@ -105,8 +114,12 @@ def get_document_chunks(doc_id: str):
 
 
 @router.delete('/{doc_id}', status_code=204)
-def delete_document(doc_id: str, db: Session = Depends(get_db)):
-    doc_service.require_doc(doc_id)
+def delete_document(
+    doc_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    doc_service.require_doc(doc_id, user_id=str(current_user.id))
     in_kb = db.query(KBDocument).filter_by(doc_id=doc_id).first() is not None
     if in_kb:
         doc_service.hide_from_library(doc_id)

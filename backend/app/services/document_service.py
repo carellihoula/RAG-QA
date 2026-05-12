@@ -46,9 +46,13 @@ class DocumentService:
             return path
         return None
 
-    def require_doc(self, doc_id: str) -> None:
+    def require_doc(self, doc_id: str, user_id: Optional[str] = None) -> None:
         if not self.doc_exists(doc_id):
             raise HTTPException(status_code=404, detail=f'Document {doc_id} not found')
+        if user_id is not None:
+            meta = self.load_metadata(doc_id)
+            if meta.get('user_id') and meta['user_id'] != user_id:
+                raise HTTPException(status_code=404, detail=f'Document {doc_id} not found')
 
     # ── Metadata ──────────────────────────────────────────────────────
 
@@ -63,6 +67,7 @@ class DocumentService:
         in_library: bool = True,
         source_type: str = 'pdf',
         source_url: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> None:
         meta_path = self.get_index_path(doc_id) / 'metadata.json'
         meta_path.write_text(json.dumps({
@@ -74,6 +79,7 @@ class DocumentService:
             'in_library': in_library,
             'source_type': source_type,
             'source_url': source_url,
+            'user_id': user_id,
         }))
 
     def load_metadata(self, doc_id: str) -> dict:
@@ -107,8 +113,8 @@ class DocumentService:
             source_url=meta.get('source_url'),
         )
 
-    def list_documents(self) -> list[DocumentListItem]:
-        """Returns all in-library documents, scanning the FAISS index directory."""
+    def list_documents(self, user_id: Optional[str] = None) -> list[DocumentListItem]:
+        """Returns in-library documents. If user_id is given, only that user's docs."""
         docs = []
         if not settings.index_dir.exists():
             return []
@@ -120,6 +126,8 @@ class DocumentService:
                 continue
             meta = json.loads(meta_path.read_text())
             if not meta.get('in_library', True):
+                continue
+            if user_id is not None and meta.get('user_id') and meta['user_id'] != user_id:
                 continue
             docs.append(self._meta_to_item(index_path.name, meta))
         return sorted(docs, key=lambda d: d.indexed_at, reverse=True)
