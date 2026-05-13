@@ -23,3 +23,8 @@ class User(Base):
     # Refresh token (stored as hash)
     refresh_token_hash = Column(String, nullable=True, index=True)
     refresh_token_expires = Column(DateTime(timezone=True), nullable=True)
+
+    # Billing
+    plan = Column(String, nullable=False, default="free", server_default="free")
+    stripe_customer_id = Column(String, nullable=True, index=True)
+    stripe_subscription_id = Column(String, nullable=True)

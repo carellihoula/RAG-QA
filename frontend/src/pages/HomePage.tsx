@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   FileText, MessageSquare, ArrowRight,
   Upload, Zap, Shield, Search, Check, Sparkles,
-  Globe, BookOpen, Atom, Rss, Table, ChevronRight,
+  Globe, BookOpen, Atom, Rss, Table, ChevronRight, Star,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ModeToggle } from '@/components/ModeToggle'
@@ -91,21 +91,37 @@ const plans = [
     name: 'Free',
     price: '$0',
     period: 'forever',
-    description: 'Everything you need to get started with AI-powered multi-source Q&A.',
-    cta: 'Get started',
+    description: 'Everything you need to get started with AI-powered document Q&A.',
+    cta: 'Get started free',
+    ctaAction: 'register',
     primary: false,
     badge: null,
-    features: ['10 sources (PDF, web, Wikipedia…)', 'Unlimited questions', 'Hybrid BM25 + semantic search', 'Source citations', 'Streaming responses', 'Dark mode'],
+    features: [
+      '5 documents (PDF, Word, web, Wikipedia…)',
+      'Unlimited questions per document',
+      'Hybrid BM25 + semantic search',
+      'Source citations with page numbers',
+      'Streaming responses',
+      'Knowledge base grouping',
+      'Dark mode',
+    ],
   },
   {
     name: 'Pro',
-    price: '$12',
+    price: '$10',
     period: 'per month',
-    description: 'For teams and power users who need more scale and flexibility.',
-    cta: 'Coming soon',
+    description: 'For power users and teams who need more scale and full access.',
+    cta: 'Upgrade to Pro',
+    ctaAction: 'upgrade',
     primary: true,
-    badge: 'Soon',
-    features: ['Unlimited sources', 'Priority indexing', 'REST API access', 'Custom chunk settings', 'Export conversations', 'Knowledge base grouping'],
+    badge: 'Popular',
+    features: [
+      '100 documents — 20× more',
+      'Everything in Free',
+      'Priority support',
+      'Early access to new features',
+      'Cancel anytime',
+    ],
   },
 ]
 
@@ -265,7 +281,7 @@ export default function HomePage() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground/50 mt-4">
-              No credit card required · Free plan includes 10 sources
+              No credit card required · Free plan includes 5 documents
             </p>
           </div>
 
@@ -370,19 +386,20 @@ export default function HomePage() {
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold tracking-tight mb-3">Simple pricing</h2>
-            <p className="text-muted-foreground text-sm">Start for free. Scale when you need to.</p>
+            <p className="text-muted-foreground text-sm">Start for free. Upgrade when you need more.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             {plans.map(plan => (
               <div
                 key={plan.name}
                 className={cn(
                   'rounded-2xl border p-7 flex flex-col gap-6',
                   plan.primary
-                    ? 'bg-gradient-to-br from-blue-600 to-violet-600 text-white border-transparent shadow-xl shadow-blue-600/25'
+                    ? 'bg-gradient-to-br from-blue-600 to-violet-600 text-white border-transparent shadow-xl shadow-blue-600/25 ring-2 ring-blue-500/30'
                     : 'bg-card'
                 )}
               >
+                {/* Header */}
                 <div className="flex items-start justify-between">
                   <div>
                     <p className={cn('text-[10px] font-bold uppercase tracking-widest mb-1.5',
@@ -397,7 +414,11 @@ export default function HomePage() {
                     </div>
                   </div>
                   {plan.badge && (
-                    <span className="px-2.5 py-1 rounded-full bg-white/20 text-white text-[10px] font-bold uppercase tracking-wider">
+                    <span className={cn(
+                      'flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider',
+                      plan.primary ? 'bg-white/20 text-white' : 'bg-blue-500/10 text-blue-500'
+                    )}>
+                      <Star className="h-2.5 w-2.5" />
                       {plan.badge}
                     </span>
                   )}
@@ -407,30 +428,41 @@ export default function HomePage() {
                   {plan.description}
                 </p>
 
-                <ul className="flex flex-col gap-2.5">
+                <ul className="flex flex-col gap-2.5 flex-1">
                   {plan.features.map(f => (
-                    <li key={f} className="flex items-center gap-2.5 text-sm">
-                      <Check className={cn('h-4 w-4 flex-shrink-0', plan.primary ? 'text-white/70' : 'text-blue-500')} />
+                    <li key={f} className="flex items-start gap-2.5 text-sm">
+                      <Check className={cn('h-4 w-4 flex-shrink-0 mt-0.5', plan.primary ? 'text-white/70' : 'text-blue-500')} />
                       <span className={plan.primary ? 'text-white/90' : ''}>{f}</span>
                     </li>
                   ))}
                 </ul>
 
                 <button
-                  onClick={() => !plan.primary && navigate('/login?tab=register')}
-                  disabled={plan.primary}
+                  onClick={() => {
+                    if (plan.ctaAction === 'register') {
+                      navigate('/login?tab=register')
+                    } else {
+                      // Pro: go to app if logged in, otherwise register
+                      navigate(token ? '/app' : '/login?tab=register')
+                    }
+                  }}
                   className={cn(
-                    'w-full py-2.5 rounded-xl text-sm font-semibold transition-all',
+                    'w-full py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95',
                     plan.primary
-                      ? 'bg-white/10 text-white/40 cursor-not-allowed'
-                      : 'bg-blue-600 hover:bg-blue-700 active:scale-95 text-white shadow-sm'
+                      ? 'bg-white text-blue-600 hover:bg-white/90 shadow-sm'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
                   )}
                 >
+                  {plan.ctaAction === 'upgrade' && <Zap className="inline h-3.5 w-3.5 mr-1.5 -mt-0.5" />}
                   {plan.cta}
                 </button>
               </div>
             ))}
           </div>
+
+          <p className="text-center text-xs text-muted-foreground/50 mt-6">
+            Secure payment via Stripe · Cancel anytime · No hidden fees
+          </p>
         </div>
       </section>
 

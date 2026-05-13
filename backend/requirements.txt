@@ -16,6 +16,9 @@ sqlalchemy==2.0.30
 passlib[argon2]
 python-jose[cryptography]==3.3.0
 
+# Billing
+stripe==9.12.0
+
 # Multi-source loaders
 docx2txt==0.9
 python-pptx

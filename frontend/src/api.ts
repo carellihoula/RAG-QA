@@ -77,8 +77,16 @@ async function apiFetch(url: string, options: RequestInit = {}): Promise<Respons
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string }
-    throw new Error(err.detail ?? `Error ${res.status}`)
+    const err = await res.json().catch(() => ({})) as { detail?: string | Record<string, unknown> }
+    const detail = err.detail
+    if (typeof detail === 'object' && detail !== null) {
+      const msg = (detail as Record<string, unknown>).message as string | undefined
+      const e = new Error(msg ?? `Error ${res.status}`) as Error & { detail: typeof detail; status: number }
+      e.detail = detail
+      e.status = res.status
+      throw e
+    }
+    throw new Error(typeof detail === 'string' ? detail : `Error ${res.status}`)
   }
   if (res.status === 204) return null as unknown as T
   return res.json()
@@ -179,7 +187,9 @@ export async function uploadDocument(file: File): Promise<Document> {
     headers: authHeaders(),
     body: form,
   })
-  return handleResponse<Document>(res)
+  const doc = await handleResponse<Document>(res)
+  window.dispatchEvent(new Event('quota:refresh'))
+  return doc
 }
 
 export async function importFromUrl(data: {
@@ -191,7 +201,9 @@ export async function importFromUrl(data: {
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(data),
   })
-  return handleResponse<Document>(res)
+  const doc = await handleResponse<Document>(res)
+  window.dispatchEvent(new Event('quota:refresh'))
+  return doc
 }
 
 export async function deleteDocument(docId: string): Promise<null> {
@@ -199,7 +211,9 @@ export async function deleteDocument(docId: string): Promise<null> {
     method: 'DELETE',
     headers: authHeaders(),
   })
-  return handleResponse<null>(res)
+  const result = await handleResponse<null>(res)
+  window.dispatchEvent(new Event('quota:refresh'))
+  return result
 }
 
 export async function getChunks(docId: string): Promise<Chunk[]> {
@@ -320,6 +334,41 @@ export async function* streamKbMessage(
   }
 
   yield* _readSSE(res)
+}
+
+// ── Billing ───────────────────────────────────────────────────────────────────
+
+export interface BillingStatus {
+  plan: string
+  doc_count: number
+  doc_limit: number
+  stripe_customer_id: string | null
+}
+
+export async function getBillingStatus(): Promise<BillingStatus> {
+  const res = await apiFetch(`${BASE}/billing/status`, { headers: authHeaders() })
+  return handleResponse<BillingStatus>(res)
+}
+
+export async function verifyCheckoutSession(sessionId: string): Promise<BillingStatus> {
+  const res = await apiFetch(`${BASE}/billing/verify?session_id=${sessionId}`, { headers: authHeaders() })
+  return handleResponse<BillingStatus>(res)
+}
+
+export async function createCheckoutSession(): Promise<{ url: string }> {
+  const res = await apiFetch(`${BASE}/billing/checkout`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return handleResponse<{ url: string }>(res)
+}
+
+export async function createPortalSession(): Promise<{ url: string }> {
+  const res = await apiFetch(`${BASE}/billing/portal`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return handleResponse<{ url: string }>(res)
 }
 
 // ── SSE reader ────────────────────────────────────────────────────────────────

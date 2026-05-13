@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/ModeToggle";
+import { QuotaBar } from "@/components/QuotaBar";
 import { cn } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -55,6 +56,7 @@ export interface AppSidebarProps {
   user: SidebarUser;
   navItems?: NavItem[];
   onLogout: () => void;
+  quotaRefresh?: number;
 }
 
 // ── Defaults ─────────────────────────────────────────────────────────────────
@@ -301,6 +303,7 @@ interface SidebarInnerProps {
   onToggle: () => void;
   onLogout: () => void;
   onNav?: () => void;
+  quotaRefresh?: number;
 }
 
 function SidebarInner({
@@ -310,6 +313,7 @@ function SidebarInner({
   onToggle,
   onLogout,
   onNav,
+  quotaRefresh,
 }: SidebarInnerProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -374,6 +378,9 @@ function SidebarInner({
           </ul>
         </nav>
 
+        {/* Quota */}
+        <QuotaBar isOpen={isOpen} refreshTrigger={quotaRefresh} />
+
         {/* Footer: mode toggle + profile */}
         <div className="px-2 pt-2 border-t border-sidebar-border flex flex-col gap-0.5">
           {isOpen ? (
@@ -406,6 +413,7 @@ export function AppSidebar({
   user,
   navItems = DEFAULT_NAV,
   onLogout,
+  quotaRefresh,
 }: AppSidebarProps) {
   const isMobile = useIsMobile();
   const { open, toggle, setOpen } = useSidebarOpen(isMobile);
@@ -451,6 +459,7 @@ export function AppSidebar({
             onToggle={() => setOpen(false)}
             onLogout={onLogout}
             onNav={() => setOpen(false)}
+            quotaRefresh={quotaRefresh}
           />
         </aside>
       </>
@@ -472,6 +481,7 @@ export function AppSidebar({
         isOpen={open}
         onToggle={toggle}
         onLogout={onLogout}
+        quotaRefresh={quotaRefresh}
       />
     </aside>
   );

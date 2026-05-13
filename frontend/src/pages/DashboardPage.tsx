@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  FileText, BookOpen, Layers, MessageSquare,
+  FileText, BookOpen, MessageSquare,
   LayoutDashboard, Sparkles, Library, FolderOpen,
 } from 'lucide-react'
 import {
@@ -11,7 +11,8 @@ import {
 import { SidebarLayout } from '@/components/AppSidebar'
 import type { NavItem } from '@/components/AppSidebar'
 import { cn } from '@/lib/utils'
-import { listDocuments, listKnowledgeBases } from '../api'
+import { listDocuments, listKnowledgeBases, getBillingStatus } from '../api'
+import type { BillingStatus } from '../api'
 import type { Document, KnowledgeBase } from '../types'
 
 // ── Shared nav ────────────────────────────────────────────────────────────────
@@ -93,11 +94,16 @@ export default function DashboardPage() {
 
   const [documents,      setDocuments]      = useState<Document[]>([])
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
+  const [billing,        setBilling]        = useState<BillingStatus | null>(null)
   const [isLoading,      setIsLoading]      = useState(true)
 
   useEffect(() => {
-    Promise.all([listDocuments(), listKnowledgeBases()])
-      .then(([docs, kbs]) => { setDocuments(docs); setKnowledgeBases(kbs) })
+    Promise.all([listDocuments(), listKnowledgeBases(), getBillingStatus()])
+      .then(([docs, kbs, bill]) => {
+        setDocuments(docs)
+        setKnowledgeBases(kbs)
+        setBilling(bill)
+      })
       .catch(() => {})
       .finally(() => setIsLoading(false))
   }, [])
@@ -111,7 +117,6 @@ export default function DashboardPage() {
   // ── Derived stats ──────────────────────────────────────────────────────
 
   const totalPages  = documents.reduce((acc, d) => acc + (d.page_count ?? 0), 0)
-  const totalChunks = documents.reduce((acc, d) => acc + (d.chunk_count ?? 0), 0)
   const msgCount    = parseInt(localStorage.getItem('msg-count') ?? '0')
   const totalKbDocs = knowledgeBases.reduce((acc, kb) => acc + kb.doc_ids.length, 0)
 
@@ -154,35 +159,30 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {/* Stat cards — 5 cols */}
-          <div className="grid grid-cols-5 gap-3">
+          {/* Stat cards — 2×2 + wide */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard
               icon={FileText}
               label="Documents"
               value={isLoading ? '—' : documents.length}
               colorClass="bg-blue-500/10 text-blue-500"
-              sub={`${Math.max(0, 10 - documents.length)} slots remaining`}
+              sub={billing
+                ? `${Math.max(0, billing.doc_limit - documents.length)} slots left (${billing.plan})`
+                : `${documents.length} indexed`}
             />
             <StatCard
               icon={Library}
               label="Knowledge Bases"
               value={isLoading ? '—' : knowledgeBases.length}
               colorClass="bg-violet-500/10 text-violet-500"
-              sub={`${totalKbDocs} documents linked`}
+              sub={`${totalKbDocs} docs linked`}
             />
             <StatCard
               icon={BookOpen}
               label="Pages indexed"
               value={isLoading ? '—' : totalPages}
               colorClass="bg-emerald-500/10 text-emerald-500"
-              sub="across all documents"
-            />
-            <StatCard
-              icon={Layers}
-              label="Chunks"
-              value={isLoading ? '—' : totalChunks}
-              colorClass="bg-amber-500/10 text-amber-500"
-              sub="semantic + BM25"
+              sub="across all docs"
             />
             <StatCard
               icon={MessageSquare}

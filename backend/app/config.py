@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     # Base URL of the frontend (used in email links)
     frontend_url: str = "http://localhost:3000"
 
+    # Stripe
+    stripe_secret_key: str = ""
+    stripe_publishable_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_pro_price_id: str = ""   # Price ID from Stripe dashboard (price_xxx)
+
+    # Plan limits
+    free_doc_limit: int = 5
+    pro_doc_limit: int = 100
+
     # CORS
     allowed_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 

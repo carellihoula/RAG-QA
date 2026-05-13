@@ -13,6 +13,7 @@ from app.models.user import User
 from app.database import get_db
 from app.loaders.file_loader import load_file
 from app.loaders.web_loader import load_web
+from app.services import billing_service
 
 router = APIRouter(prefix='/documents', tags=['documents'])
 doc_service = DocumentService()
@@ -24,6 +25,7 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
 ):
     """Uploads any supported file, indexes it, then generates an AI title."""
+    billing_service.check_quota(current_user)
     doc_id, file_path = await doc_service.save_upload(file)
 
     loop = asyncio.get_event_loop()
@@ -61,6 +63,7 @@ async def import_from_url(
     current_user: User = Depends(get_current_user),
 ):
     """Imports a web source (URL, YouTube, Wikipedia, arXiv, RSS) and indexes it."""
+    billing_service.check_quota(current_user)
     loop = asyncio.get_event_loop()
     try:
         docs, source_type, auto_title = await loop.run_in_executor(

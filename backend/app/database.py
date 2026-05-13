@@ -37,8 +37,11 @@ def _migrate_db():
         ("activation_token",      "VARCHAR"),
         ("reset_token",           "VARCHAR"),
         ("reset_token_expires",   "DATETIME"),
-        ("refresh_token_hash",    "VARCHAR"),
-        ("refresh_token_expires", "DATETIME"),
+        ("refresh_token_hash",      "VARCHAR"),
+        ("refresh_token_expires",   "DATETIME"),
+        ("plan",                    "VARCHAR NOT NULL DEFAULT 'free'"),
+        ("stripe_customer_id",      "VARCHAR"),
+        ("stripe_subscription_id",  "VARCHAR"),
     ]
     with engine.connect() as conn:
         existing = {

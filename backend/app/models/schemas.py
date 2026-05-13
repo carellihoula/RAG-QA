@@ -123,6 +123,13 @@ class ErrorResponse(BaseModel):
     detail: str
 
 
+class BillingStatus(BaseModel):
+    plan: str
+    doc_count: int
+    doc_limit: int
+    stripe_customer_id: Optional[str] = None
+
+
 # ── Knowledge Base schemas ────────────────────────────────────────────────────
 
 class KnowledgeBaseCreate(BaseModel):

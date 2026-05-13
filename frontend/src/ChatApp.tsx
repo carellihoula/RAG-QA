@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { ChatProvider, useChatContext } from "./context/ChatContext";
 import type { NavItem } from "@/components/AppSidebar";
 import { LayoutDashboard, MessageSquare } from "lucide-react";
@@ -15,7 +18,7 @@ import { WelcomeScreen } from "@/components/chat/WelcomeScreen";
 import { ChatHeader } from "@/components/chat/ChatHeader";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { ChunksPanel } from "@/components/chat/ChunksPanel";
-import { addDocToKb } from "./api";
+import { addDocToKb, verifyCheckoutSession } from "./api";
 
 export default function ChatApp() {
   return (
@@ -26,6 +29,20 @@ export default function ChatApp() {
 }
 
 function ChatAppInner() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [quotaRefresh, setQuotaRefresh] = useState(0)
+  useEffect(() => {
+    const sessionId = searchParams.get('session_id')
+    if (!sessionId) return
+    setSearchParams({}, { replace: true })
+    verifyCheckoutSession(sessionId)
+      .then(() => {
+        toast.success('Welcome to Pro! Your quota has been upgraded.', { duration: 5000 })
+        setQuotaRefresh(n => n + 1)
+      })
+      .catch(() => toast.error('Could not verify payment. Please contact support.'))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const {
     user,
     logout,
@@ -50,7 +67,7 @@ function ChatAppInner() {
   } = useChatContext();
 
   return (
-    <SidebarLayout sidebarProps={{ user, navItems: APP_NAV, onLogout: logout }}>
+    <SidebarLayout sidebarProps={{ user, navItems: APP_NAV, onLogout: logout, quotaRefresh }}>
       <div
         className="flex h-full overflow-hidden relative"
         onDragEnter={handleDragEnter}
