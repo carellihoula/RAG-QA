@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     bm25_weight: float = 0.4   # sparse  — exact keyword matching
     dense_weight: float = 0.6  # dense   — semantic similarity
 
+    # Database (defaults to local SQLite for dev)
+    database_url: str = ""
+
     # JWT
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
