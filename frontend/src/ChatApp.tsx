@@ -1,225 +1,122 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import {
-  listDocuments,
-  uploadDocument,
-  deleteDocument,
-  sendMessage,
-  clearSession,
-  getChunks,
-} from './api'
-import type { Document, Chunk, Message } from './types'
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
+import { ChatProvider, useChatContext } from "./context/ChatContext";
+import type { NavItem } from "@/components/AppSidebar";
+import { LayoutDashboard, MessageSquare } from "lucide-react";
+
+const APP_NAV: NavItem[] = [
+  { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
+  { label: "Chat",      icon: MessageSquare,   href: "/app" },
+];
+import { SidebarLayout } from "@/components/AppSidebar";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { AddSourceModal } from "@/components/AddSourceModal";
+import { DropOverlay } from "@/components/chat/DropOverlay";
+import { ChatSidebar } from "@/components/chat/sidebar/ChatSidebar";
+import { WelcomeScreen } from "@/components/chat/WelcomeScreen";
+import { ChatHeader } from "@/components/chat/ChatHeader";
+import { ChatPanel } from "@/components/chat/ChatPanel";
+import { ChunksPanel } from "@/components/chat/ChunksPanel";
+import { addDocToKb, verifyCheckoutSession } from "./api";
 
 export default function ChatApp() {
-  const navigate = useNavigate()
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [selectedDoc, setSelectedDoc] = useState<Document | null>(null)
-  const [tab, setTab] = useState<'chat' | 'chunks'>('chat')
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState('')
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [chunks, setChunks] = useState<Chunk[]>([])
-  const [chunksLoading, setChunksLoading] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
+  return (
+    <ChatProvider>
+      <ChatAppInner />
+    </ChatProvider>
+  );
+}
 
-  useEffect(() => { fetchDocuments() }, [])
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+function ChatAppInner() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [quotaRefresh, setQuotaRefresh] = useState(0)
+  useEffect(() => {
+    const sessionId = searchParams.get('session_id')
+    if (!sessionId) return
+    setSearchParams({}, { replace: true })
+    verifyCheckoutSession(sessionId)
+      .then(() => {
+        toast.success('Welcome to Pro! Your quota has been upgraded.', { duration: 5000 })
+        setQuotaRefresh(n => n + 1)
+      })
+      .catch(() => toast.error('Could not verify payment. Please contact support.'))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function fetchDocuments() {
-    try {
-      setDocuments(await listDocuments())
-    } catch (err) {
-      if (err instanceof Error && err.message === 'Unauthorized') logout()
-      else setError('Could not load documents.')
-    }
-  }
-
-  function logout() {
-    localStorage.removeItem('token')
-    navigate('/login', { replace: true })
-  }
-
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    setError(null)
-    try {
-      await uploadDocument(file)
-      await fetchDocuments()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
-    } finally {
-      setUploading(false)
-      if (fileRef.current) fileRef.current.value = ''
-    }
-  }
-
-  async function handleDelete(docId: string) {
-    try {
-      await deleteDocument(docId)
-      if (selectedDoc?.doc_id === docId) selectDocument(null)
-      await fetchDocuments()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed')
-    }
-  }
-
-  function selectDocument(doc: Document | null) {
-    if (selectedDoc && sessionId) clearSession(sessionId, selectedDoc.doc_id)
-    setSelectedDoc(doc)
-    setMessages([])
-    setSessionId(null)
-    setChunks([])
-    setTab('chat')
-    setError(null)
-  }
-
-  async function switchTab(next: 'chat' | 'chunks') {
-    setTab(next)
-    setError(null)
-    if (next === 'chunks' && chunks.length === 0 && selectedDoc) {
-      setChunksLoading(true)
-      try {
-        setChunks(await getChunks(selectedDoc.doc_id))
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load chunks')
-      } finally {
-        setChunksLoading(false)
-      }
-    }
-  }
-
-  async function handleSend(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    if (!input.trim() || !selectedDoc || loading) return
-    const question = input.trim()
-    setInput('')
-    setMessages(prev => [...prev, { role: 'user', content: question }])
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await sendMessage(selectedDoc.doc_id, question, sessionId)
-      setSessionId(res.session_id)
-      setMessages(prev => [...prev, { role: 'assistant', content: res.answer, sources: res.sources }])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send message')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const {
+    user,
+    logout,
+    handleDragEnter,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+    showAddSource,
+    setShowAddSource,
+    addSourceKbId,
+    setAddSourceKbId,
+    confirmDialog,
+    setConfirmDialog,
+    activeTarget,
+    tab,
+    selectedDoc,
+    selectedKb,
+    fetchDocuments,
+    fetchKnowledgeBases,
+    fetchKbDocs,
+    selectDocument,
+  } = useChatContext();
 
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <div className="sidebar-top">
-          <h1 className="logo">RAG Q&A</h1>
-          <button className="btn-logout" onClick={logout} title="Log out">⏻</button>
-        </div>
-
-        <div className="upload-area">
-          <button className="btn-upload" onClick={() => fileRef.current?.click()} disabled={uploading}>
-            {uploading ? 'Uploading…' : '+ Upload PDF'}
-          </button>
-          <input ref={fileRef} type="file" accept=".pdf" hidden onChange={handleUpload} />
-        </div>
-
-        <div className="doc-list">
-          {documents.length === 0 && <p className="empty">No documents yet.</p>}
-          {documents.map(doc => (
-            <div
-              key={doc.doc_id}
-              className={`doc-item ${selectedDoc?.doc_id === doc.doc_id ? 'active' : ''}`}
-              onClick={() => selectDocument(doc)}
-            >
-              <span className="doc-name" title={doc.filename}>{doc.filename}</span>
-              <button
-                className="btn-delete"
-                onClick={e => { e.stopPropagation(); handleDelete(doc.doc_id) }}
-              >✕</button>
-            </div>
-          ))}
-        </div>
-      </aside>
-
-      <main className="chat">
-        {!selectedDoc ? (
-          <div className="placeholder">
-            <p>Select or upload a PDF to start chatting.</p>
-          </div>
-        ) : (
-          <>
-            <header className="chat-header">
-              <span className="doc-title">{selectedDoc.filename}</span>
-              <div className="tabs">
-                <button className={tab === 'chat' ? 'tab active' : 'tab'} onClick={() => switchTab('chat')}>Chat</button>
-                <button className={tab === 'chunks' ? 'tab active' : 'tab'} onClick={() => switchTab('chunks')}>Chunks</button>
-              </div>
-              {tab === 'chat' && sessionId && (
-                <button className="btn-clear" onClick={() => selectDocument(selectedDoc)}>Clear chat</button>
-              )}
-            </header>
-
-            {tab === 'chat' && (
-              <>
-                <div className="messages">
-                  {messages.map((msg, i) => (
-                    <div key={i} className={`message ${msg.role}`}>
-                      <p>{msg.content}</p>
-                      {msg.sources && msg.sources.length > 0 && (
-                        <details className="sources">
-                          <summary>Sources ({msg.sources.length})</summary>
-                          {msg.sources.map((s, j) => (
-                            <div key={j} className="source-chunk">
-                              <strong>Page {s.page}</strong>
-                              <p>{s.content}</p>
-                            </div>
-                          ))}
-                        </details>
-                      )}
-                    </div>
-                  ))}
-                  {loading && <div className="message assistant thinking">Thinking…</div>}
-                  {error && <div className="error-msg">{error}</div>}
-                  <div ref={bottomRef} />
-                </div>
-
-                <form className="input-bar" onSubmit={handleSend}>
-                  <input
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    placeholder="Ask a question about this document…"
-                    disabled={loading}
-                  />
-                  <button type="submit" disabled={loading || !input.trim()}>Send</button>
-                </form>
-              </>
-            )}
-
-            {tab === 'chunks' && (
-              <div className="chunks-panel">
-                {chunksLoading && <p className="empty">Loading chunks…</p>}
-                {error && <div className="error-msg">{error}</div>}
-                {!chunksLoading && chunks.length > 0 && (
-                  <>
-                    <p className="chunks-count">{chunks.length} chunks indexed</p>
-                    {chunks.map((chunk, i) => (
-                      <div key={i} className="chunk-card">
-                        <div className="chunk-page">Page {chunk.page}</div>
-                        <p className="chunk-content">{chunk.content}</p>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </main>
-    </div>
-  )
+    <SidebarLayout sidebarProps={{ user, navItems: APP_NAV, onLogout: logout, quotaRefresh }}>
+      <div
+        className="flex h-full overflow-hidden relative"
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        <DropOverlay />
+        <ChatSidebar />
+        <main className="flex-1 flex flex-col overflow-hidden">
+          {!activeTarget ? (
+            <WelcomeScreen />
+          ) : (
+            <>
+              <ChatHeader />
+              {(tab === "chat" || selectedKb) && <ChatPanel />}
+              {tab === "chunks" && selectedDoc && <ChunksPanel />}
+            </>
+          )}
+        </main>
+      </div>
+      <AddSourceModal
+        open={showAddSource}
+        onOpenChange={(open) => {
+          setShowAddSource(open);
+          if (!open) setAddSourceKbId(null);
+        }}
+        targetKbId={addSourceKbId}
+        onDocumentAdded={async (doc) => {
+          if (addSourceKbId) {
+            try {
+              await addDocToKb(addSourceKbId, doc.doc_id);
+            } catch {}
+            await fetchKnowledgeBases();
+            await fetchKbDocs(addSourceKbId);
+          }
+          await fetchDocuments();
+          selectDocument(doc);
+        }}
+      />
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel={confirmDialog.confirmLabel}
+        variant={confirmDialog.variant}
+        onConfirm={confirmDialog.onConfirm}
+      />
+    </SidebarLayout>
+  );
 }
