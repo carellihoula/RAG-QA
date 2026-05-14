@@ -12,6 +12,8 @@ class DocumentResponse(BaseModel):
     page_count: int
     chunk_count: int
     indexed_at: datetime
+    status: Literal['processing', 'ready', 'error'] = 'ready'
+    error: Optional[str] = None
 
 
 SourceType = Literal[
@@ -31,6 +33,7 @@ class DocumentListItem(BaseModel):
     in_library: bool = True
     source_type: str = 'pdf'
     source_url: Optional[str] = None
+    status: Literal['processing', 'ready', 'error'] = 'ready'
 
 
 class DocumentUrlRequest(BaseModel):
@@ -44,6 +47,7 @@ class ChatRequest(BaseModel):
     doc_id: str
     question: str
     session_id: Optional[str] = None
+    conversation_id: Optional[str] = None
 
 
 class SourceChunk(BaseModel):
@@ -161,3 +165,22 @@ class KBChatRequest(BaseModel):
     kb_id: str
     question: str
     session_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+
+
+class ConversationMessageOut(BaseModel):
+    id: str
+    role: str
+    content: str
+    sources: Optional[list[dict]] = None
+    created_at: datetime
+
+
+class ConversationOut(BaseModel):
+    id: str
+    doc_id: Optional[str] = None
+    kb_id: Optional[str] = None
+    title: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    message_count: int = 0

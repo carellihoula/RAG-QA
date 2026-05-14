@@ -2,40 +2,71 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
+import psycopg
+
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_community.vectorstores import FAISS
+from langchain_postgres.vectorstores import PGVector
 from langchain_community.retrievers import BM25Retriever
 from langchain.retrievers import EnsembleRetriever
 from langchain.retrievers.merger_retriever import MergerRetriever
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.documents import Document
 
 from app.config import settings
 from app.models.schemas import DocumentResponse, ChatResponse, SourceChunk
 
 
 class RAGService:
-    """Indexes PDFs and answers questions via RAG (streaming + non-streaming)."""
+    """Indexes documents and answers questions via RAG (streaming + non-streaming)."""
 
     def __init__(self):
         self._embeddings = OpenAIEmbeddings(
             model=settings.embedding_model,
             openai_api_key=settings.openai_api_key,
         )
-        # Legacy non-streaming chains cache
         self._chains: dict[str, ConversationalRetrievalChain] = {}
-        # Streaming conversation history: {cache_key: [HumanMessage|AIMessage, ...]}
         self._histories: dict[str, list] = {}
-        # Hybrid retriever cache: {doc_id: EnsembleRetriever}
         self._retrievers: dict[str, EnsembleRetriever] = {}
+
+    # ── Helpers ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _psycopg_url() -> str:
+        """Strip SQLAlchemy dialect prefix for raw psycopg connections."""
+        return settings.pgvector_url.replace("postgresql+psycopg://", "postgresql://")
+
+    def _get_vectorstore(self, collection_name: str) -> PGVector:
+        return PGVector(
+            embeddings=self._embeddings,
+            collection_name=collection_name,
+            connection=settings.pgvector_url,
+            use_jsonb=True,
+        )
+
+    def _get_all_docs(self, collection_name: str) -> list[Document]:
+        """Fetches every chunk stored in a PGVector collection."""
+        with psycopg.connect(self._psycopg_url()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT lpe.document, lpe.cmetadata
+                    FROM langchain_pg_embedding lpe
+                    JOIN langchain_pg_collection lpc ON lpe.collection_id = lpc.uuid
+                    WHERE lpc.name = %s
+                    """,
+                    (collection_name,),
+                )
+                rows = cur.fetchall()
+        return [Document(page_content=row[0], metadata=row[1] or {}) for row in rows]
 
     # ── Indexing ──────────────────────────────────────────────────────
 
-    def index_from_docs(self, doc_id: str, docs: list, filename: str) -> DocumentResponse:
-        """Pipeline: pre-loaded LangChain documents → chunks → FAISS on disk."""
+    async def index_from_docs(self, doc_id: str, docs: list, filename: str) -> DocumentResponse:
+        """Pipeline: pre-loaded LangChain documents → chunks → PGVector (async)."""
         page_count = len(docs)
 
         splitter = RecursiveCharacterTextSplitter(
@@ -46,11 +77,18 @@ class RAGService:
         chunks = splitter.split_documents(docs)
         chunk_count = len(chunks)
 
-        vectorstore = FAISS.from_documents(chunks, self._embeddings)
+        # PostgreSQL rejects NUL bytes in text fields
+        for chunk in chunks:
+            chunk.page_content = chunk.page_content.replace('\x00', ' ')
 
-        index_path = settings.index_dir / doc_id
-        index_path.mkdir(parents=True, exist_ok=True)
-        vectorstore.save_local(str(index_path))
+        await PGVector.afrom_documents(
+            documents=chunks,
+            embedding=self._embeddings,
+            collection_name=doc_id,
+            connection=settings.pgvector_url,
+            use_jsonb=True,
+            pre_delete_collection=True,
+        )
 
         return DocumentResponse(
             doc_id=doc_id,
@@ -61,26 +99,22 @@ class RAGService:
         )
 
     def index_document(self, doc_id: str, pdf_path: Path, filename: str) -> DocumentResponse:
-        """Backward-compat: loads a PDF then calls index_from_docs."""
         loader = PyPDFLoader(str(pdf_path))
         pages = loader.load()
         return self.index_from_docs(doc_id, pages, filename)
 
-    def _load_vectorstore(self, doc_id: str) -> FAISS:
-        """Loads a FAISS index from disk."""
-        index_path = settings.index_dir / doc_id
-        if not index_path.exists():
-            raise ValueError(f"FAISS index not found for doc_id={doc_id}")
-        return FAISS.load_local(
-            str(index_path), self._embeddings, allow_dangerous_deserialization=True
-        )
+    def delete_index(self, doc_id: str) -> None:
+        """Drops the PGVector collection for a document and clears in-memory caches."""
+        try:
+            self._get_vectorstore(doc_id).delete_collection()
+        except Exception:
+            pass
+        self._retrievers.pop(doc_id, None)
 
     # ── AI title generation ───────────────────────────────────────────
 
     async def generate_title(self, doc_id: str) -> str:
-        """Asks the LLM to produce a short descriptive title for the document."""
-        vectorstore = self._load_vectorstore(doc_id)
-        sample_docs = list(vectorstore.docstore._dict.values())[:4]
+        sample_docs = self._get_all_docs(doc_id)[:4]
         context = "\n\n".join(doc.page_content[:400] for doc in sample_docs)
 
         llm = ChatOpenAI(
@@ -103,14 +137,18 @@ class RAGService:
     # ── Hybrid retriever ──────────────────────────────────────────────
 
     def _get_hybrid_retriever(self, doc_id: str) -> EnsembleRetriever:
-        """Builds (and caches) a BM25 + FAISS ensemble retriever for a document."""
+        """Builds (and caches) a BM25 + PGVector ensemble retriever for a document."""
         if doc_id not in self._retrievers:
-            vectorstore = self._load_vectorstore(doc_id)
+            vectorstore = self._get_vectorstore(doc_id)
             dense = vectorstore.as_retriever(
                 search_type="similarity",
                 search_kwargs={"k": settings.retriever_k},
             )
-            all_docs = list(vectorstore.docstore._dict.values())
+            all_docs = self._get_all_docs(doc_id)
+            if not all_docs:
+                raise ValueError(
+                    "Document has no indexed content — please delete and re-upload it."
+                )
             sparse = BM25Retriever.from_documents(all_docs, k=settings.retriever_k)
             self._retrievers[doc_id] = EnsembleRetriever(
                 retrievers=[sparse, dense],
@@ -159,7 +197,6 @@ class RAGService:
     # ── Streaming chat ────────────────────────────────────────────────
 
     def retrieve_context(self, doc_id: str, question: str) -> tuple[list, str]:
-        """Retrieves relevant chunks and builds the context string. Run in executor."""
         retriever = self._get_hybrid_retriever(doc_id)
         docs = retriever.invoke(question)
         parts = [
@@ -175,7 +212,6 @@ class RAGService:
         session_id: str,
         context: str,
     ) -> AsyncGenerator[str, None]:
-        """Async generator: yields LLM tokens one by one, then persists the turn."""
         cache_key = f"{doc_id}:{session_id}"
         history = self._histories.get(cache_key, [])
 
@@ -225,12 +261,19 @@ class RAGService:
     # ── Chunks & session ──────────────────────────────────────────────
 
     def get_chunks(self, doc_id: str) -> list[dict]:
-        vectorstore = self._load_vectorstore(doc_id)
         chunks = [
             {"page": doc.metadata.get("page", 0) + 1, "content": doc.page_content}
-            for doc in vectorstore.docstore._dict.values()
+            for doc in self._get_all_docs(doc_id)
         ]
         return sorted(chunks, key=lambda c: c["page"])
+
+    def load_history(self, cache_key: str, messages: list[dict]) -> None:
+        if cache_key not in self._histories:
+            self._histories[cache_key] = [
+                HumanMessage(content=m["content"]) if m["role"] == "user"
+                else AIMessage(content=m["content"])
+                for m in messages
+            ]
 
     def clear_session(self, session_id: str, doc_id: str) -> None:
         cache_key = f"{doc_id}:{session_id}"
@@ -240,7 +283,6 @@ class RAGService:
     # ── Knowledge Base retrieval ───────────────────────────────────────
 
     def get_kb_retriever(self, doc_ids: list[str]):
-        """Merged hybrid retriever across all documents of a Knowledge Base."""
         retrievers = []
         for doc_id in doc_ids:
             try:

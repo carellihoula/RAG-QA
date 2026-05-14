@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { MAX_DOCS, MAX_KBS } from "@/components/chat/constants";
+import { QuotaDialog } from "@/components/QuotaDialog";
 import {
   listDocuments,
   uploadDocument,
@@ -17,7 +18,13 @@ import {
   addDocToKb,
   removeDocFromKb,
   getKbDocuments,
+  listConversations,
+  getConversationMessages,
+  deleteConversation,
+  getBillingStatus,
+  createCheckoutSession,
 } from "../api";
+import type { BillingStatus } from "../api";
 import type { Document, Chunk, Message, KnowledgeBase } from "../types";
 
 function nameFromEmail(email: string) {
@@ -57,7 +64,9 @@ interface ChatContextValue {
   messages: Message[];
   input: string;
   setInput: React.Dispatch<React.SetStateAction<string>>;
-  sessionId: string | null;
+  sessionId: string | null;      // alias for conversationId (kept for compat)
+  conversationId: string | null;
+  historyLoading: boolean;
   chunks: Chunk[];
   chunksLoading: boolean;
   loading: boolean;
@@ -120,18 +129,60 @@ interface ChatContextValue {
   confirmDialog: ConfirmDialogState;
   setConfirmDialog: React.Dispatch<React.SetStateAction<ConfirmDialogState>>;
 
+  // Quota dialog
+  showQuotaDialog: (limit: number) => void;
+
+  // Billing
+  billing: BillingStatus | null;
+
   // Derived
   docUsagePct: number;
   kbUsagePct: number;
   activeTarget: Document | KnowledgeBase | null;
 
   // Data fetchers (needed in ChatAppInner for AddSourceModal callback)
-  fetchDocuments: () => Promise<void>;
-  fetchKnowledgeBases: () => Promise<void>;
+  fetchDocuments: () => Promise<Document[]>;
+  fetchKnowledgeBases: () => Promise<KnowledgeBase[]>;
   fetchKbDocs: (kbId: string) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
+
+// ── Conversation history cache (localStorage, 24 h TTL, max 60 messages) ──────
+
+const CACHE_TTL = 24 * 60 * 60 * 1000;
+
+function _convCacheKey(docId?: string, kbId?: string) {
+  if (docId) return `conv-cache:doc:${docId}`;
+  if (kbId)  return `conv-cache:kb:${kbId}`;
+  return null;
+}
+
+function readConvCache(key: string): { conversationId: string; messages: Message[] } | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { conversationId, messages, ts } = JSON.parse(raw) as {
+      conversationId: string; messages: Message[]; ts: number;
+    };
+    if (Date.now() - ts > CACHE_TTL) { localStorage.removeItem(key); return null; }
+    return { conversationId, messages };
+  } catch { return null; }
+}
+
+function writeConvCache(key: string, conversationId: string, messages: Message[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      conversationId,
+      messages: messages.slice(-60),   // cap to avoid filling storage
+      ts: Date.now(),
+    }));
+  } catch { /* storage full — ignore */ }
+}
+
+function dropConvCache(key: string) {
+  localStorage.removeItem(key);
+}
 
 export function useChatContext(): ChatContextValue {
   const ctx = useContext(ChatContext);
@@ -149,6 +200,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   // Data
   const [documents, setDocuments] = useState<Document[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [billing, setBilling] = useState<BillingStatus | null>(null);
 
   // Selection — one of the two is set at a time
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
@@ -158,7 +210,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [tab, setTab] = useState<"chat" | "chunks">("chat");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [chunksLoading, setChunksLoading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -183,6 +236,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [renameValue, setRenameValue] = useState("");
   const [kbDocs, setKbDocs] = useState<Record<string, Document[]>>({});
 
+  // Quota dialog
+  const [quotaDialogOpen, setQuotaDialogOpen] = useState(false);
+  const [quotaLimit, setQuotaLimit] = useState(5);
+
+  function showQuotaDialog(limit: number) {
+    setQuotaLimit(limit);
+    setQuotaDialogOpen(true);
+  }
+
   // Confirm dialog
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
     open: false,
@@ -197,8 +259,23 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchDocuments();
-    fetchKnowledgeBases();
+    getBillingStatus().then(setBilling).catch(() => {});
+    Promise.all([fetchDocuments(), fetchKnowledgeBases()]).then(
+      ([docs, kbs]) => {
+        const saved = localStorage.getItem("last-selection");
+        if (!saved) return;
+        try {
+          const { type, id } = JSON.parse(saved) as { type: string; id: string };
+          if (type === "doc") {
+            const doc = docs?.find((d) => d.doc_id === id);
+            if (doc) selectDocument(doc);
+          } else if (type === "kb") {
+            const kb = kbs?.find((k) => k.id === id);
+            if (kb) selectKb(kb);
+          }
+        } catch { /* ignore malformed */ }
+      }
+    );
   }, []);
   useEffect(() => {
     if (isCreatingKb) kbInputRef.current?.focus();
@@ -209,20 +286,26 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   // ── Data fetching ───────────────────────────────────────────────────
 
-  async function fetchDocuments() {
+  async function fetchDocuments(): Promise<Document[]> {
     try {
-      setDocuments(await listDocuments());
+      const docs = await listDocuments();
+      setDocuments(docs);
+      return docs;
     } catch (err) {
       if (err instanceof Error && err.message === "Unauthorized") logout();
       else toast.error("Could not load documents.");
+      return [];
     }
   }
 
-  async function fetchKnowledgeBases() {
+  async function fetchKnowledgeBases(): Promise<KnowledgeBase[]> {
     try {
-      setKnowledgeBases(await listKnowledgeBases());
+      const kbs = await listKnowledgeBases();
+      setKnowledgeBases(kbs);
+      return kbs;
     } catch {
       toast.error("Could not load knowledge bases.");
+      return [];
     }
   }
 
@@ -265,12 +348,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       try {
         const newDoc = await uploadDocument(file);
         await fetchDocuments();
+        getBillingStatus().then(setBilling).catch(() => {});
         selectDocument(newDoc);
         toast.success(`"${newDoc.title ?? newDoc.filename}" uploaded`);
       } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : `Failed: ${file.name}`,
-        );
+        const e = err as { status?: number; detail?: { code?: string; doc_limit?: number } };
+        const isQuota = e.status === 402 || e.detail?.code === "quota_exceeded";
+        if (isQuota) {
+          const limit = e.detail?.doc_limit ?? billing?.doc_limit ?? 5;
+          showQuotaDialog(limit);
+          break;
+        }
+        toast.error(err instanceof Error ? err.message : `Failed to upload ${file.name}`);
       }
     }
     setUploading(false);
@@ -279,6 +368,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   async function handleDeleteDoc(docId: string) {
     try {
       await deleteDocument(docId);
+      dropConvCache(_convCacheKey(docId)!);
       if (selectedDoc?.doc_id === docId) selectDocument(null);
       await fetchDocuments();
       toast.success("Document deleted");
@@ -459,29 +549,112 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   // ── Selection ────────────────────────────────────────────────────────
 
-  function resetChat() {
+  function resetChat(newConvId: string | null = null) {
     setMessages([]);
-    setSessionId(null);
+    setConversationId(newConvId);
     setChunks([]);
     setTab("chat");
   }
 
-  function selectDocument(doc: Document | null) {
-    if (selectedDoc && sessionId) clearSession(sessionId, selectedDoc.doc_id);
+  async function selectDocument(doc: Document | null) {
+    if (selectedDoc && conversationId) clearSession(conversationId, selectedDoc.doc_id);
+
+    if (doc) localStorage.setItem("last-selection", JSON.stringify({ type: "doc", id: doc.doc_id }));
+    else localStorage.removeItem("last-selection");
+
     setSelectedKb(null);
     setSelectedDoc(doc);
-    resetChat();
+    setChunks([]);
+    setTab("chat");
+
+    if (!doc) { setMessages([]); setConversationId(null); return; }
+
+    // 1. Show cache instantly if available (zero latency)
+    const key = _convCacheKey(doc.doc_id)!;
+    const cached = readConvCache(key);
+    if (cached) {
+      setMessages(cached.messages);
+      setConversationId(cached.conversationId);
+    } else {
+      setMessages([]);
+      setConversationId(null);
+      setHistoryLoading(true);
+    }
+
+    // 2. Fetch fresh data in background (stale-while-revalidate)
+    try {
+      const convs = await listConversations(doc.doc_id);
+      if (convs.length > 0) {
+        const msgs = await getConversationMessages(convs[0].id);
+        const fresh = msgs.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          sources: m.sources,
+        }));
+        setMessages(fresh);
+        setConversationId(convs[0].id);
+        writeConvCache(key, convs[0].id, fresh);
+      } else if (cached) {
+        // DB has no conversation for this doc anymore — clear stale cache
+        setMessages([]);
+        setConversationId(null);
+        dropConvCache(key);
+      }
+    } catch { /* silent */ }
+    finally { setHistoryLoading(false); }
   }
 
-  function selectKb(kb: KnowledgeBase | null) {
+  async function selectKb(kb: KnowledgeBase | null) {
+    if (kb) localStorage.setItem("last-selection", JSON.stringify({ type: "kb", id: kb.id }));
+    else localStorage.removeItem("last-selection");
+
     setSelectedDoc(null);
     setSelectedKb(kb);
-    resetChat();
+    setChunks([]);
+    setTab("chat");
+
+    if (!kb) { setMessages([]); setConversationId(null); return; }
+
+    const key = _convCacheKey(undefined, kb.id)!;
+    const cached = readConvCache(key);
+    if (cached) {
+      setMessages(cached.messages);
+      setConversationId(cached.conversationId);
+    } else {
+      setMessages([]);
+      setConversationId(null);
+      setHistoryLoading(true);
+    }
+
+    try {
+      const convs = await listConversations(undefined, kb.id);
+      if (convs.length > 0) {
+        const msgs = await getConversationMessages(convs[0].id);
+        const fresh = msgs.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          sources: m.sources,
+        }));
+        setMessages(fresh);
+        setConversationId(convs[0].id);
+        writeConvCache(key, convs[0].id, fresh);
+      } else if (cached) {
+        setMessages([]);
+        setConversationId(null);
+        dropConvCache(key);
+      }
+    } catch { /* silent */ }
+    finally { setHistoryLoading(false); }
   }
 
   function clearConversation() {
-    if (selectedDoc && sessionId) clearSession(sessionId, selectedDoc.doc_id);
-    resetChat();
+    const key = _convCacheKey(selectedDoc?.doc_id, selectedKb?.id);
+    if (key) dropConvCache(key);
+
+    if (selectedDoc && conversationId) clearSession(conversationId, selectedDoc.doc_id);
+    if (conversationId) deleteConversation(conversationId).catch(() => {});
+
+    resetChat(null);
   }
 
   // ── Tab / chunks ─────────────────────────────────────────────────────
@@ -520,8 +693,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const stream = selectedKb
-        ? streamKbMessage(selectedKb.id, question, sessionId)
-        : streamMessage(selectedDoc!.doc_id, question, sessionId);
+        ? streamKbMessage(selectedKb.id, question, conversationId)
+        : streamMessage(selectedDoc!.doc_id, question, conversationId);
 
       for await (const event of stream) {
         if (event.type === "token") {
@@ -538,16 +711,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         } else if (event.type === "sources") {
           const prev = parseInt(localStorage.getItem("msg-count") ?? "0");
           localStorage.setItem("msg-count", String(prev + 1));
-          setSessionId(event.session_id);
+          const newConvId = event.conversation_id ?? event.session_id;
+          const newSources = event.sources;
+          setConversationId(newConvId);
           setMessages((prev) => {
             const msgs = [...prev];
             const last = msgs[msgs.length - 1];
             if (last?.role === "assistant")
-              msgs[msgs.length - 1] = {
-                ...last,
-                sources: event.sources,
-                streaming: false,
-              };
+              msgs[msgs.length - 1] = { ...last, sources: newSources, streaming: false };
+            // Persist to cache as soon as the exchange is complete
+            const cacheKey = _convCacheKey(selectedDoc?.doc_id, selectedKb?.id);
+            if (cacheKey && newConvId)
+              writeConvCache(cacheKey, newConvId, msgs.filter((m) => !m.streaming));
             return msgs;
           });
         } else if (event.type === "error") {
@@ -583,7 +758,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   // ── Derived values ────────────────────────────────────────────────────
 
-  const docUsagePct = Math.min((documents.length / MAX_DOCS) * 100, 100);
+  const docLimit   = billing?.doc_limit ?? MAX_DOCS;
+  const docUsagePct = Math.min((documents.length / docLimit) * 100, 100);
   const kbUsagePct = Math.min((knowledgeBases.length / MAX_KBS) * 100, 100);
   const activeTarget = selectedKb ?? selectedDoc;
 
@@ -603,7 +779,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     messages,
     input,
     setInput,
-    sessionId,
+    sessionId: conversationId,
+    conversationId,
+    historyLoading,
     chunks,
     chunksLoading,
     loading,
@@ -649,6 +827,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setAddSourceKbId,
     confirmDialog,
     setConfirmDialog,
+    showQuotaDialog,
+    billing,
     docUsagePct,
     kbUsagePct,
     activeTarget,
@@ -657,5 +837,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     fetchKbDocs,
   };
 
-  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+  return (
+    <ChatContext.Provider value={value}>
+      {children}
+      <QuotaDialog
+        open={quotaDialogOpen}
+        onOpenChange={setQuotaDialogOpen}
+        limit={quotaLimit}
+        onUpgrade={() =>
+          createCheckoutSession()
+            .then(({ url }) => { window.location.href = url })
+            .catch(() => {})
+        }
+      />
+    </ChatContext.Provider>
+  );
 }

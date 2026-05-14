@@ -10,6 +10,7 @@ export function ChatPanel() {
     input,
     setInput,
     loading,
+    historyLoading,
     selectedDoc,
     selectedKb,
     submitMessage,
@@ -42,29 +43,33 @@ export function ChatPanel() {
       <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5 scrollbar-thin">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center select-none">
-            {selectedKb ? (
+            {historyLoading ? (
+              <Loader2 className="h-6 w-6 text-muted-foreground/30 animate-spin" />
+            ) : selectedKb ? (
               <Library className="h-8 w-8 text-muted-foreground/20" />
             ) : (
               <MessageSquare className="h-8 w-8 text-muted-foreground/20" />
             )}
-            <p className="text-sm text-muted-foreground">
-              {selectedKb ? (
-                <>
-                  Ask anything across{" "}
-                  <span className="font-medium text-foreground/70">
-                    {selectedKb.name}
-                  </span>{" "}
-                  — {selectedKb.doc_ids.length} documents indexed
-                </>
-              ) : (
-                <>
-                  Ask your first question about{" "}
-                  <span className="font-medium text-foreground/70">
-                    {selectedDoc!.title ?? selectedDoc!.filename}
-                  </span>
-                </>
-              )}
-            </p>
+            {!historyLoading && (
+              <p className="text-sm text-muted-foreground">
+                {selectedKb ? (
+                  <>
+                    Ask anything across{" "}
+                    <span className="font-medium text-foreground/70">
+                      {selectedKb.name}
+                    </span>{" "}
+                    — {selectedKb.doc_ids.length} documents indexed
+                  </>
+                ) : (
+                  <>
+                    Ask your first question about{" "}
+                    <span className="font-medium text-foreground/70">
+                      {selectedDoc!.title ?? selectedDoc!.filename}
+                    </span>
+                  </>
+                )}
+              </p>
+            )}
           </div>
         )}
 

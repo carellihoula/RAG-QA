@@ -68,8 +68,10 @@ class DocumentService:
         source_type: str = 'pdf',
         source_url: Optional[str] = None,
         user_id: Optional[str] = None,
+        status: str = 'ready',
     ) -> None:
         meta_path = self.get_index_path(doc_id) / 'metadata.json'
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
         meta_path.write_text(json.dumps({
             'filename': filename,
             'title': title,
@@ -80,7 +82,38 @@ class DocumentService:
             'source_type': source_type,
             'source_url': source_url,
             'user_id': user_id,
+            'status': status,
         }))
+
+    def update_after_indexing(
+        self,
+        doc_id: str,
+        title: Optional[str] = None,
+        filename: Optional[str] = None,
+        page_count: int = 0,
+        chunk_count: int = 0,
+        source_type: Optional[str] = None,
+        status: str = 'ready',
+        error: Optional[str] = None,
+    ) -> None:
+        meta = self.load_metadata(doc_id)
+        if not meta:
+            return
+        meta['status'] = status
+        if title is not None:
+            meta['title'] = title
+        if filename is not None:
+            meta['filename'] = filename
+        if page_count:
+            meta['page_count'] = page_count
+        if chunk_count:
+            meta['chunk_count'] = chunk_count
+        if source_type:
+            meta['source_type'] = source_type
+        if error:
+            meta['error'] = error
+        meta_path = self.get_index_path(doc_id) / 'metadata.json'
+        meta_path.write_text(json.dumps(meta))
 
     def load_metadata(self, doc_id: str) -> dict:
         meta_path = self.get_index_path(doc_id) / 'metadata.json'
@@ -111,6 +144,7 @@ class DocumentService:
             in_library=meta.get('in_library', True),
             source_type=meta.get('source_type', 'pdf'),
             source_url=meta.get('source_url'),
+            status=meta.get('status', 'ready'),
         )
 
     def list_documents(self, user_id: Optional[str] = None) -> list[DocumentListItem]:
@@ -145,11 +179,14 @@ class DocumentService:
     # ── Delete ────────────────────────────────────────────────────────
 
     def delete_document(self, doc_id: str) -> None:
-        """Permanently deletes the source file and FAISS index."""
+        """Permanently deletes the source file, metadata, and vector index."""
         import shutil
+        from app.services.rag_service import rag_service
+
         src = self.get_source_file(doc_id)
         if src and src.exists():
             src.unlink()
         index_path = self.get_index_path(doc_id)
         if index_path.exists():
             shutil.rmtree(index_path)
+        rag_service.delete_index(doc_id)

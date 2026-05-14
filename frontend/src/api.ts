@@ -1,8 +1,9 @@
 import type {
   Document, Chunk, Source, ChatResponse, AuthResponse, StreamEvent, KnowledgeBase, UserProfile,
+  Conversation, ConversationMessage,
 } from './types'
 
-export type { Document, Chunk, Source, ChatResponse, AuthResponse, StreamEvent, KnowledgeBase, UserProfile }
+export type { Document, Chunk, Source, ChatResponse, AuthResponse, StreamEvent, KnowledgeBase, UserProfile, Conversation, ConversationMessage }
 
 const BASE = '/api/v1'
 
@@ -77,16 +78,19 @@ async function apiFetch(url: string, options: RequestInit = {}): Promise<Respons
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string | Record<string, unknown> }
-    const detail = err.detail
-    if (typeof detail === 'object' && detail !== null) {
-      const msg = (detail as Record<string, unknown>).message as string | undefined
-      const e = new Error(msg ?? `Error ${res.status}`) as Error & { detail: typeof detail; status: number }
-      e.detail = detail
-      e.status = res.status
-      throw e
-    }
-    throw new Error(typeof detail === 'string' ? detail : `Error ${res.status}`)
+    const body = await res.json().catch(() => ({})) as { detail?: string | Record<string, unknown> }
+    const detail = body.detail
+    const e = (() => {
+      if (typeof detail === 'object' && detail !== null) {
+        const msg = (detail as Record<string, unknown>).message as string | undefined
+        return Object.assign(new Error(msg ?? `Error ${res.status}`), { detail, status: res.status })
+      }
+      return Object.assign(
+        new Error(typeof detail === 'string' ? detail : `Error ${res.status}`),
+        { status: res.status }
+      )
+    })()
+    throw e
   }
   if (res.status === 204) return null as unknown as T
   return res.json()
@@ -221,17 +225,22 @@ export async function getChunks(docId: string): Promise<Chunk[]> {
   return handleResponse<Chunk[]>(res)
 }
 
+export async function getDocumentStatus(docId: string): Promise<Document> {
+  const res = await apiFetch(`${BASE}/documents/${docId}/status`, { headers: authHeaders() })
+  return handleResponse<Document>(res)
+}
+
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
 export async function* streamMessage(
   docId: string,
   question: string,
-  sessionId: string | null
+  conversationId: string | null
 ): AsyncGenerator<StreamEvent> {
   const res = await apiFetch(`${BASE}/chat/stream`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ doc_id: docId, question, session_id: sessionId }),
+    body: JSON.stringify({ doc_id: docId, question, conversation_id: conversationId }),
   })
 
   if (!res.ok) {
@@ -320,12 +329,12 @@ export async function clearKbSession(kbId: string, sessionId: string): Promise<n
 export async function* streamKbMessage(
   kbId: string,
   question: string,
-  sessionId: string | null
+  conversationId: string | null
 ): AsyncGenerator<StreamEvent> {
   const res = await apiFetch(`${BASE}/chat/kb/stream`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ kb_id: kbId, question, session_id: sessionId }),
+    body: JSON.stringify({ kb_id: kbId, question, conversation_id: conversationId }),
   })
 
   if (!res.ok) {
@@ -334,6 +343,29 @@ export async function* streamKbMessage(
   }
 
   yield* _readSSE(res)
+}
+
+// ── Conversations ─────────────────────────────────────────────────────────────
+
+export async function listConversations(docId?: string, kbId?: string): Promise<Conversation[]> {
+  const params = new URLSearchParams()
+  if (docId) params.set('doc_id', docId)
+  if (kbId) params.set('kb_id', kbId)
+  const res = await apiFetch(`${BASE}/conversations/?${params}`, { headers: authHeaders() })
+  return handleResponse<Conversation[]>(res)
+}
+
+export async function getConversationMessages(convId: string): Promise<ConversationMessage[]> {
+  const res = await apiFetch(`${BASE}/conversations/${convId}/messages`, { headers: authHeaders() })
+  return handleResponse<ConversationMessage[]>(res)
+}
+
+export async function deleteConversation(convId: string): Promise<null> {
+  const res = await apiFetch(`${BASE}/conversations/${convId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return handleResponse<null>(res)
 }
 
 // ── Billing ───────────────────────────────────────────────────────────────────

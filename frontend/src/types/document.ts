@@ -12,6 +12,8 @@ export interface Document {
   in_library?: boolean
   source_type?: SourceType
   source_url?: string
+  status?: 'processing' | 'ready' | 'error'
+  error?: string
 }
 
 export interface Chunk {

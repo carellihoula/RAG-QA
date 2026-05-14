@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     index_dir: Path = base_dir / "data" / "indexes"
 
     # RAG parameters
-    chunk_size: int = 1000
-    chunk_overlap: int = 200
+    chunk_size: int = 1500
+    chunk_overlap: int = 150
     retriever_k: int = 4
     embedding_model: str = "text-embedding-3-small"
     llm_model: str = "gpt-4o-mini"
@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     # Database (defaults to local SQLite for dev)
     database_url: str = ""
+
+    # PGVector (used for document embeddings) — set via PGVECTOR_URL in .env
+    pgvector_url: str = ""
 
     # JWT
     jwt_secret: str = "change-me-in-production"
@@ -56,8 +59,14 @@ class Settings(BaseSettings):
     free_doc_limit: int = 5
     pro_doc_limit: int = 100
 
-    # CORS
+    # CORS — add your production domain via ALLOWED_ORIGINS env var (comma-separated)
     allowed_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    extra_origins: str = ""  # e.g. "https://yourdomain.com,https://www.yourdomain.com"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        extra = [o.strip() for o in self.extra_origins.split(",") if o.strip()]
+        return self.allowed_origins + extra
 
     class Config:
         env_file = ".env"

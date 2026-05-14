@@ -8,7 +8,8 @@ import { cn } from '@/lib/utils'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog'
-import { uploadDocument, importFromUrl } from '../api'
+import { uploadDocument, importFromUrl, getDocumentStatus } from '../api'
+import { useChatContext } from '@/context/ChatContext'
 import type { Document } from '../types'
 
 // ── Source type metadata ──────────────────────────────────────────────────────
@@ -54,37 +55,69 @@ interface Props {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function AddSourceModal({ open, onOpenChange, onDocumentAdded, targetKbId }: Props) {
+  const { showQuotaDialog } = useChatContext()
   const [tab, setTab]           = useState<'files' | 'web'>('files')
   const [webType, setWebType]   = useState<string>('url')
   const [urlInput, setUrlInput] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading]   = useState(false)
-  const [progress, setProgress]     = useState<{ done: number; total: number } | null>(null)
+  const [progress, setProgress]     = useState<{ done: number; total: number; phase: 'uploading' | 'indexing' } | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragCounter  = useRef(0)
 
+  // ── Helpers ─────────────────────────────────────────────────────────
+
+  async function pollUntilReady(docId: string): Promise<Document> {
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 2000))
+      const s = await getDocumentStatus(docId)
+      if (s.status === 'ready') return s
+      if (s.status === 'error') throw new Error(s.error ?? 'Indexing failed')
+    }
+    throw new Error('Indexing timed out')
+  }
+
   // ── File upload ─────────────────────────────────────────────────────
+
+  const MAX_FILE_MB = 10
+  const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024
 
   async function handleFiles(files: File[]) {
     if (!files.length || uploading) return
     setUploading(true)
-    setProgress({ done: 0, total: files.length })
+    let succeeded = 0
 
     for (let i = 0; i < files.length; i++) {
+      if (files[i].size > MAX_FILE_BYTES) {
+        toast.error(`${files[i].name} exceeds the ${MAX_FILE_MB} MB limit`)
+        continue
+      }
       try {
-        const doc = await uploadDocument(files[i])
+        setProgress({ done: i, total: files.length, phase: 'uploading' })
+        const partial = await uploadDocument(files[i])
+        setProgress({ done: i, total: files.length, phase: 'indexing' })
+        const doc = await pollUntilReady(partial.doc_id)
         onDocumentAdded(doc)
-        setProgress({ done: i + 1, total: files.length })
+        succeeded++
+        setProgress({ done: succeeded, total: files.length, phase: 'indexing' })
       } catch (err) {
-        toast.error(`Failed: ${files[i].name}`)
+        const e = err as { status?: number; detail?: { code?: string; doc_limit?: number } }
+        const isQuota = e.status === 402 || e.detail?.code === 'quota_exceeded'
+        if (isQuota) {
+          const limit = e.detail?.doc_limit ?? 5
+          showQuotaDialog(limit)
+          break
+        }
+        toast.error(err instanceof Error ? err.message : `Failed to upload ${files[i].name}`)
       }
     }
 
-    toast.success(`${files.length} file${files.length > 1 ? 's' : ''} imported`)
+    if (succeeded > 0)
+      toast.success(`${succeeded} file${succeeded > 1 ? 's' : ''} imported`)
     setUploading(false)
     setProgress(null)
-    if (files.length === 1) onOpenChange(false)
+    if (succeeded === 1 && files.length === 1) onOpenChange(false)
   }
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -117,7 +150,8 @@ export function AddSourceModal({ open, onOpenChange, onDocumentAdded, targetKbId
     if (!value || uploading) return
     setUploading(true)
     try {
-      const doc = await importFromUrl({ url: value, source_type: webType as 'url' | 'wikipedia' | 'arxiv' | 'rss' })
+      const partial = await importFromUrl({ url: value, source_type: webType as 'url' | 'wikipedia' | 'arxiv' | 'rss' })
+      const doc = await pollUntilReady(partial.doc_id)
       onDocumentAdded(doc)
       toast.success(`"${doc.title ?? doc.filename}" imported`)
       setUrlInput('')
@@ -132,8 +166,12 @@ export function AddSourceModal({ open, onOpenChange, onDocumentAdded, targetKbId
   const webMeta = WEB_TYPES[webType]
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+    <Dialog open={open} onOpenChange={(v) => { if (!uploading) onOpenChange(v) }}>
+      <DialogContent
+        className="max-w-xl"
+        onInteractOutside={(e) => { if (uploading) e.preventDefault() }}
+        onEscapeKeyDown={(e) => { if (uploading) e.preventDefault() }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-4 w-4 text-blue-500" />
@@ -185,7 +223,12 @@ export function AddSourceModal({ open, onOpenChange, onDocumentAdded, targetKbId
                   <>
                     <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
                     <p className="text-sm font-medium">
-                      Indexing {progress.done} / {progress.total}…
+                      {progress.phase === 'uploading'
+                        ? `Uploading ${progress.done + 1} / ${progress.total}…`
+                        : `Indexing ${progress.done + 1} / ${progress.total}…`}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {progress.phase === 'indexing' ? 'Processing with AI…' : 'Sending file…'}
                     </p>
                   </>
                 ) : (
@@ -195,7 +238,7 @@ export function AddSourceModal({ open, onOpenChange, onDocumentAdded, targetKbId
                     </div>
                     <div className="text-center">
                       <p className="text-sm font-medium">Drop files here or click to browse</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Multiple files supported</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Multiple files supported · Max {MAX_FILE_MB} MB per file</p>
                     </div>
                   </>
                 )}

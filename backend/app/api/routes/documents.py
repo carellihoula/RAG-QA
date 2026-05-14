@@ -1,7 +1,8 @@
 import uuid
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 
 from app.services.document_service import DocumentService
@@ -19,87 +20,103 @@ router = APIRouter(prefix='/documents', tags=['documents'])
 doc_service = DocumentService()
 
 
-@router.post('/', response_model=DocumentResponse, status_code=201)
-async def upload_document(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
-):
-    """Uploads any supported file, indexes it, then generates an AI title."""
-    billing_service.check_quota(current_user)
-    doc_id, file_path = await doc_service.save_upload(file)
-
-    loop = asyncio.get_event_loop()
+async def _index_file_task(doc_id: str, file_path: Path, filename: str) -> None:
     try:
-        docs, source_type = await loop.run_in_executor(None, load_file, file_path)
-    except Exception as e:
-        file_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail=f'Loading error: {e}')
-
-    try:
-        response = await loop.run_in_executor(
-            None, rag_service.index_from_docs, doc_id, docs, file.filename
-        )
-    except Exception as e:
-        file_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f'Indexing error: {e}')
-
-    try:
-        title = await rag_service.generate_title(doc_id)
-    except Exception:
-        title = None
-
-    doc_service.save_metadata(
-        doc_id, file.filename, title, response.indexed_at,
-        response.page_count, response.chunk_count,
-        source_type=source_type,
-        user_id=str(current_user.id),
-    )
-    return response.model_copy(update={'title': title})
-
-
-@router.post('/from-url', response_model=DocumentResponse, status_code=201)
-async def import_from_url(
-    body: DocumentUrlRequest,
-    current_user: User = Depends(get_current_user),
-):
-    """Imports a web source (URL, YouTube, Wikipedia, arXiv, RSS) and indexes it."""
-    billing_service.check_quota(current_user)
-    loop = asyncio.get_event_loop()
-    try:
-        docs, source_type, auto_title = await loop.run_in_executor(
-            None, load_web, body.source_type, body.url
-        )
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f'Could not load source: {e}')
-
-    doc_id = str(uuid.uuid4())
-
-    # Ensure index dir exists (no physical file for web sources)
-    (doc_service.get_index_path(doc_id)).mkdir(parents=True, exist_ok=True)
-
-    try:
-        response = await loop.run_in_executor(
-            None, rag_service.index_from_docs, doc_id, docs, auto_title
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f'Indexing error: {e}')
-
-    # Use LLM title only for short auto-titles; keep scraped title otherwise
-    title = auto_title
-    if source_type == 'pdf':
+        docs, source_type = await asyncio.to_thread(load_file, file_path)
+        response = await rag_service.index_from_docs(doc_id, docs, filename)
         try:
             title = await rag_service.generate_title(doc_id)
         except Exception:
-            pass
+            title = None
+        doc_service.update_after_indexing(
+            doc_id, title=title,
+            page_count=response.page_count, chunk_count=response.chunk_count,
+            source_type=source_type, status='ready',
+        )
+    except Exception as e:
+        file_path.unlink(missing_ok=True)
+        doc_service.update_after_indexing(doc_id, status='error', error=str(e))
 
+
+async def _index_url_task(doc_id: str, url: str, source_type_input: str) -> None:
+    try:
+        docs, source_type, auto_title = await asyncio.to_thread(load_web, source_type_input, url)
+        response = await rag_service.index_from_docs(doc_id, docs, auto_title)
+        title = auto_title
+        if source_type == 'pdf':
+            try:
+                title = await rag_service.generate_title(doc_id)
+            except Exception:
+                pass
+        doc_service.update_after_indexing(
+            doc_id, title=title, filename=auto_title,
+            page_count=response.page_count, chunk_count=response.chunk_count,
+            source_type=source_type, status='ready',
+        )
+    except Exception as e:
+        doc_service.update_after_indexing(doc_id, status='error', error=str(e))
+
+
+@router.post('/', response_model=DocumentResponse, status_code=202)
+async def upload_document(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    billing_service.check_quota(current_user)
+    doc_id, file_path = await doc_service.save_upload(file)
+    now = datetime.now(tz=timezone.utc)
     doc_service.save_metadata(
-        doc_id, auto_title, title, response.indexed_at,
-        response.page_count, response.chunk_count,
-        source_type=source_type,
-        source_url=body.url,
+        doc_id, file.filename, None, now,
+        page_count=0, chunk_count=0, status='processing',
         user_id=str(current_user.id),
     )
-    return response.model_copy(update={'title': title, 'filename': auto_title})
+    background_tasks.add_task(_index_file_task, doc_id, file_path, file.filename)
+    return DocumentResponse(
+        doc_id=doc_id, filename=file.filename, title=None,
+        page_count=0, chunk_count=0, indexed_at=now, status='processing',
+    )
+
+
+@router.post('/from-url', response_model=DocumentResponse, status_code=202)
+async def import_from_url(
+    background_tasks: BackgroundTasks,
+    body: DocumentUrlRequest,
+    current_user: User = Depends(get_current_user),
+):
+    billing_service.check_quota(current_user)
+    doc_id = str(uuid.uuid4())
+    now = datetime.now(tz=timezone.utc)
+    doc_service.save_metadata(
+        doc_id, body.url, None, now,
+        page_count=0, chunk_count=0, status='processing',
+        source_type=body.source_type, source_url=body.url,
+        user_id=str(current_user.id),
+    )
+    background_tasks.add_task(_index_url_task, doc_id, body.url, body.source_type)
+    return DocumentResponse(
+        doc_id=doc_id, filename=body.url, title=None,
+        page_count=0, chunk_count=0, indexed_at=now, status='processing',
+    )
+
+
+@router.get('/{doc_id}/status')
+def get_document_status(doc_id: str, current_user: User = Depends(get_current_user)):
+    doc_service.require_doc(doc_id, user_id=str(current_user.id))
+    meta = doc_service.load_metadata(doc_id)
+    return {
+        'doc_id': doc_id,
+        'status': meta.get('status', 'ready'),
+        'filename': meta.get('filename', ''),
+        'title': meta.get('title'),
+        'page_count': meta.get('page_count', 0),
+        'chunk_count': meta.get('chunk_count', 0),
+        'indexed_at': meta.get('indexed_at'),
+        'source_type': meta.get('source_type', 'pdf'),
+        'source_url': meta.get('source_url'),
+        'in_library': meta.get('in_library', True),
+        'error': meta.get('error'),
+    }
 
 
 @router.get('/', response_model=list[DocumentListItem])

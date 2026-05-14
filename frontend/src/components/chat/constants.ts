@@ -1,4 +1,4 @@
-export const MAX_DOCS = 10
+export const MAX_DOCS = 5
 export const MAX_KBS = 3
 
 export const KB_COLORS: Record<string, { dot: string; bg: string; text: string }> = {
