@@ -14,7 +14,7 @@ export function WelcomeScreen() {
     useChatContext();
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-6 px-8 select-none">
+    <div className="flex-1 flex flex-col items-center justify-center gap-4 sm:gap-6 px-4 sm:px-8 select-none">
       <div className="relative">
         <div className="h-20 w-20 rounded-3xl bg-gradient-to-br from-blue-500/10 to-violet-600/10 border border-blue-500/20 flex items-center justify-center shadow-xl shadow-blue-500/5">
           <Sparkles className="h-8 w-8 text-blue-400" />
@@ -24,12 +24,13 @@ export function WelcomeScreen() {
         </div>
       </div>
       <div className="text-center space-y-2 max-w-sm">
-        <h2 className="text-2xl font-bold tracking-tight">
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
           Ask your documents
         </h2>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Select a <strong>Knowledge Base</strong> to query multiple documents at
-          once, or pick a single document from the sidebar.
+          Select a <strong>Knowledge Base</strong> or a document from the{" "}
+          <span className="md:hidden">sidebar menu</span>
+          <span className="hidden md:inline">sidebar</span>.
         </p>
       </div>
 

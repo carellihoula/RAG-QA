@@ -48,6 +48,10 @@ interface ChatContextValue {
   user: { name: string; email: string };
   logout: () => void;
 
+  // Mobile chat sidebar
+  chatSidebarOpen: boolean;
+  setChatSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
+
   // Data
   documents: Document[];
   knowledgeBases: KnowledgeBase[];
@@ -235,6 +239,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [renamingKbId, setRenamingKbId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [kbDocs, setKbDocs] = useState<Record<string, Document[]>>({});
+
+  // Mobile chat sidebar
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
 
   // Quota dialog
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false);
@@ -558,6 +565,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   async function selectDocument(doc: Document | null) {
     if (selectedDoc && conversationId) clearSession(conversationId, selectedDoc.doc_id);
+    setChatSidebarOpen(false);
 
     if (doc) localStorage.setItem("last-selection", JSON.stringify({ type: "doc", id: doc.doc_id }));
     else localStorage.removeItem("last-selection");
@@ -605,6 +613,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function selectKb(kb: KnowledgeBase | null) {
+    setChatSidebarOpen(false);
     if (kb) localStorage.setItem("last-selection", JSON.stringify({ type: "kb", id: kb.id }));
     else localStorage.removeItem("last-selection");
 
@@ -832,6 +841,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     docUsagePct,
     kbUsagePct,
     activeTarget,
+    chatSidebarOpen,
+    setChatSidebarOpen,
     fetchDocuments,
     fetchKnowledgeBases,
     fetchKbDocs,

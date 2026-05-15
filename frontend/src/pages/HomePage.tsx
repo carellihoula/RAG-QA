@@ -234,8 +234,8 @@ export default function HomePage() {
       </nav>
 
       {/* ── Hero ────────────────────────────────────────────────────── */}
-      <section className="px-6 pt-20 pb-16">
-        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-14 items-center">
+      <section className="px-4 sm:px-6 pt-10 sm:pt-16 md:pt-20 pb-10 md:pb-16">
+        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-8 md:gap-14 items-center">
 
           {/* Left: copy */}
           <div>
@@ -243,7 +243,7 @@ export default function HomePage() {
               <Sparkles className="h-3 w-3 text-blue-400" />
               8+ source types · BM25 + semantic search · GPT-4o-mini
             </div>
-            <h1 className="text-5xl font-extrabold tracking-tight leading-[1.1] mb-5">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-[1.1] mb-4 sm:mb-5">
               Chat with any{' '}
               <span className="bg-gradient-to-r from-blue-500 to-violet-600 bg-clip-text text-transparent">
                 source
@@ -293,26 +293,26 @@ export default function HomePage() {
       </section>
 
       {/* ── Stats bar ────────────────────────────────────────────────── */}
-      <section className="border-y bg-muted/30 px-6 py-8">
-        <div className="max-w-4xl mx-auto grid grid-cols-3 gap-8 text-center">
+      <section className="border-y bg-muted/30 px-4 sm:px-6 py-6 sm:py-8">
+        <div className="max-w-4xl mx-auto grid grid-cols-3 gap-3 sm:gap-8 text-center">
           {[
-            { value: '8+ formats',      label: 'Source types' },
-            { value: 'BM25 + Semantic', label: 'Hybrid retrieval' },
-            { value: 'SSE streaming',   label: 'Real-time answers' },
+            { value: '8+',        label: 'Source types' },
+            { value: 'Hybrid',    label: 'BM25 + Semantic' },
+            { value: 'Streaming', label: 'Real-time answers' },
           ].map(stat => (
             <div key={stat.label}>
-              <p className="text-xl font-bold tracking-tight">{stat.value}</p>
-              <p className="text-sm text-muted-foreground mt-0.5">{stat.label}</p>
+              <p className="text-base sm:text-xl font-bold tracking-tight">{stat.value}</p>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{stat.label}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* ── Features ─────────────────────────────────────────────────── */}
-      <section id="features" className="px-6 py-20">
+      <section id="features" className="px-4 sm:px-6 py-12 md:py-20">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold tracking-tight mb-3">Built for accuracy</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">Built for accuracy</h2>
             <p className="text-muted-foreground text-sm leading-relaxed max-w-xl mx-auto">
               Every component is chosen to maximize retrieval quality and answer faithfulness.
             </p>
@@ -335,10 +335,10 @@ export default function HomePage() {
       </section>
 
       {/* ── How it works ─────────────────────────────────────────────── */}
-      <section id="how-it-works" className="border-t bg-muted/20 px-6 py-20">
+      <section id="how-it-works" className="border-t bg-muted/20 px-4 sm:px-6 py-12 md:py-20">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold tracking-tight mb-3">How it works</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">How it works</h2>
             <p className="text-muted-foreground text-sm">Three steps, under 30 seconds.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
@@ -363,7 +363,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Tech stack ───────────────────────────────────────────────── */}
-      <section className="border-t px-6 py-12">
+      <section className="border-t px-4 sm:px-6 py-10 sm:py-12">
         <div className="max-w-4xl mx-auto text-center">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/40 mb-6">
             Tech stack
@@ -382,10 +382,10 @@ export default function HomePage() {
       </section>
 
       {/* ── Pricing ──────────────────────────────────────────────────── */}
-      <section id="pricing" className="border-t bg-muted/20 px-6 py-20">
+      <section id="pricing" className="border-t bg-muted/20 px-4 sm:px-6 py-12 md:py-20">
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold tracking-tight mb-3">Simple pricing</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">Simple pricing</h2>
             <p className="text-muted-foreground text-sm">Start for free. Upgrade when you need more.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
@@ -467,12 +467,12 @@ export default function HomePage() {
       </section>
 
       {/* ── Final CTA ────────────────────────────────────────────────── */}
-      <section className="border-t px-6 py-24">
+      <section className="border-t px-4 sm:px-6 py-16 sm:py-24">
         <div className="max-w-2xl mx-auto text-center">
           <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500/10 to-violet-600/10 border border-blue-500/20 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-500/5">
             <Sparkles className="h-6 w-6 text-blue-400" />
           </div>
-          <h2 className="text-3xl font-bold tracking-tight mb-4">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-4">
             Ready to chat with your sources?
           </h2>
           <p className="text-muted-foreground mb-8 text-sm leading-relaxed max-w-sm mx-auto">
@@ -489,8 +489,8 @@ export default function HomePage() {
       </section>
 
       {/* ── Footer ───────────────────────────────────────────────────── */}
-      <footer className="border-t px-6 py-5">
-        <div className="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-4">
+      <footer className="border-t px-4 sm:px-6 py-5">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
           <button onClick={() => navigate('/')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <div className="h-6 w-6 rounded-md bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center">
               <span className="text-white font-bold text-[10px]">R</span>
