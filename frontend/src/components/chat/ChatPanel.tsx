@@ -40,7 +40,7 @@ export function ChatPanel() {
 
   return (
     <>
-      <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5 scrollbar-thin">
+      <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6 flex flex-col gap-5 scrollbar-thin">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center select-none">
             {historyLoading ? (
@@ -80,7 +80,7 @@ export function ChatPanel() {
       </div>
 
       <form
-        className="flex-shrink-0 px-5 pb-5 pt-3 border-t bg-card/40"
+        className="flex-shrink-0 px-3 pb-4 pt-2 sm:px-5 sm:pb-5 sm:pt-3 border-t bg-card/40"
         onSubmit={(e) => {
           e.preventDefault();
           if (textareaRef.current) textareaRef.current.style.height = "auto";
