@@ -23,6 +23,9 @@ psycopg2-binary==2.9.9
 # Billing
 stripe==9.12.0
 
+# AWS S3
+boto3==1.34.0
+
 # Multi-source loaders
 docx2txt==0.9
 python-pptx
