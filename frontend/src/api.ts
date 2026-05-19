@@ -403,6 +403,55 @@ export async function createPortalSession(): Promise<{ url: string }> {
   return handleResponse<{ url: string }>(res)
 }
 
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+export interface AdminUser {
+  id: string
+  email: string
+  display_name: string | null
+  is_active: boolean
+  is_admin: boolean
+  plan: string
+  created_at: string
+}
+
+export interface AdminUserUpdate {
+  display_name?: string | null
+  is_active?: boolean
+  is_admin?: boolean
+  plan?: 'free' | 'pro'
+}
+
+export async function adminListUsers(params: {
+  search?: string
+  plan?: string
+  status?: string
+} = {}): Promise<AdminUser[]> {
+  const q = new URLSearchParams()
+  if (params.search) q.set('search', params.search)
+  if (params.plan)   q.set('plan', params.plan)
+  if (params.status) q.set('status', params.status)
+  const res = await apiFetch(`${BASE}/admin/users?${q}`, { headers: authHeaders() })
+  return handleResponse<AdminUser[]>(res)
+}
+
+export async function adminUpdateUser(id: string, data: AdminUserUpdate): Promise<AdminUser> {
+  const res = await apiFetch(`${BASE}/admin/users/${id}`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  })
+  return handleResponse<AdminUser>(res)
+}
+
+export async function adminDeleteUser(id: string): Promise<null> {
+  const res = await apiFetch(`${BASE}/admin/users/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return handleResponse<null>(res)
+}
+
 // ── SSE reader ────────────────────────────────────────────────────────────────
 
 async function* _readSSE(res: Response): AsyncGenerator<StreamEvent> {

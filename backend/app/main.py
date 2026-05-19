@@ -58,7 +58,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.api.routes import documents, chat, auth, knowledge_bases, billing, conversations  # noqa: E402
+from app.api.routes import documents, chat, auth, knowledge_bases, billing, conversations, admin  # noqa: E402
 
 app.include_router(auth.router,            prefix="/api/v1")
 app.include_router(billing.router,         prefix="/api/v1")
@@ -66,6 +66,7 @@ app.include_router(documents.router,       prefix="/api/v1")
 app.include_router(chat.router,            prefix="/api/v1")
 app.include_router(knowledge_bases.router, prefix="/api/v1")
 app.include_router(conversations.router,   prefix="/api/v1")
+app.include_router(admin.router,           prefix="/api/v1")
 
 
 @app.get("/health")

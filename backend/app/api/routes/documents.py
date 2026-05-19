@@ -24,7 +24,7 @@ async def _index_file_task(doc_id: str, file_path: Path, filename: str, user_id:
     from app.services import s3_service
     try:
         docs, source_type = await asyncio.to_thread(load_file, file_path)
-        response = await rag_service.index_from_docs(doc_id, docs, filename)
+        response = await rag_service.index_from_docs(doc_id, docs, filename, source_type=source_type)
         try:
             title = await rag_service.generate_title(doc_id)
         except Exception:
@@ -53,7 +53,7 @@ async def _index_file_task(doc_id: str, file_path: Path, filename: str, user_id:
 async def _index_url_task(doc_id: str, url: str, source_type_input: str) -> None:
     try:
         docs, source_type, auto_title = await asyncio.to_thread(load_web, source_type_input, url)
-        response = await rag_service.index_from_docs(doc_id, docs, auto_title)
+        response = await rag_service.index_from_docs(doc_id, docs, auto_title, source_type=source_type)
         title = auto_title
         if source_type == 'pdf':
             try:

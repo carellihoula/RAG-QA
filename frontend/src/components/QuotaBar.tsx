@@ -56,9 +56,12 @@ export function QuotaBar({ isOpen, refreshTrigger }: Props) {
   if (loading || !status) return null
 
   const { plan, doc_count, doc_limit } = status
-  const isPro   = plan === 'pro'
-  const pct     = Math.min((doc_count / doc_limit) * 100, 100)
-  const nearMax = !isPro && pct >= 80
+  const isAdmin  = plan === 'admin'
+  const isPro    = plan === 'pro'
+  const pct      = doc_limit > 0 ? Math.min((doc_count / doc_limit) * 100, 100) : 0
+  const nearMax  = !isPro && !isAdmin && pct >= 80
+
+  if (isAdmin) return null
 
   // ── Collapsed: just a dot indicator ───────────────────────────────────────
   if (!isOpen) {

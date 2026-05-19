@@ -57,6 +57,7 @@ def _migrate_db():
         ("plan",                   "VARCHAR NOT NULL DEFAULT 'free'",  "VARCHAR NOT NULL DEFAULT 'free'"),
         ("stripe_customer_id",     "VARCHAR",                          "VARCHAR"),
         ("stripe_subscription_id", "VARCHAR",                          "VARCHAR"),
+        ("is_admin",               "BOOLEAN NOT NULL DEFAULT 0",       "BOOLEAN NOT NULL DEFAULT FALSE"),
     ]
 
     with engine.connect() as conn:

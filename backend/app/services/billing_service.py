@@ -37,7 +37,9 @@ def get_doc_count(user_id: str) -> int:
 
 
 def check_quota(user: User) -> None:
-    """Raise 402 if user has reached their plan's document limit."""
+    """Raise 402 if user has reached their plan's document limit. Admins are unlimited."""
+    if user.is_admin:
+        return
     limit = PLAN_LIMITS.get(user.plan, settings.free_doc_limit)
     count = get_doc_count(str(user.id))
     if count >= limit:
@@ -54,8 +56,15 @@ def check_quota(user: User) -> None:
 
 
 def get_billing_status(user: User) -> dict:
-    limit = PLAN_LIMITS.get(user.plan, settings.free_doc_limit)
     count = get_doc_count(str(user.id))
+    if user.is_admin:
+        return {
+            "plan": "admin",
+            "doc_count": count,
+            "doc_limit": -1,
+            "stripe_customer_id": user.stripe_customer_id,
+        }
+    limit = PLAN_LIMITS.get(user.plan, settings.free_doc_limit)
     return {
         "plan": user.plan,
         "doc_count": count,

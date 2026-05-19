@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FileText, BookOpen, MessageSquare,
-  LayoutDashboard, Sparkles, Library, FolderOpen,
+  LayoutDashboard, Sparkles, Library, FolderOpen, Shield,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -11,9 +11,11 @@ import {
 import { SidebarLayout } from '@/components/AppSidebar'
 import type { NavItem } from '@/components/AppSidebar'
 import { cn } from '@/lib/utils'
-import { listDocuments, listKnowledgeBases, getBillingStatus } from '../api'
+import { listDocuments, listKnowledgeBases, getBillingStatus, getMe } from '../api'
 import type { BillingStatus } from '../api'
 import type { Document, KnowledgeBase } from '../types'
+import type { UserProfile } from '../types/auth'
+import { AdminTab } from '@/components/admin/AdminTab'
 
 // ── Shared nav ────────────────────────────────────────────────────────────────
 
@@ -96,13 +98,16 @@ export default function DashboardPage() {
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
   const [billing,        setBilling]        = useState<BillingStatus | null>(null)
   const [isLoading,      setIsLoading]      = useState(true)
+  const [currentUser,    setCurrentUser]    = useState<UserProfile | null>(null)
+  const [activeTab,      setActiveTab]      = useState<'overview' | 'admin'>('overview')
 
   useEffect(() => {
-    Promise.all([listDocuments(), listKnowledgeBases(), getBillingStatus()])
-      .then(([docs, kbs, bill]) => {
+    Promise.all([listDocuments(), listKnowledgeBases(), getBillingStatus(), getMe()])
+      .then(([docs, kbs, bill, me]) => {
         setDocuments(docs)
         setKnowledgeBases(kbs)
         setBilling(bill)
+        setCurrentUser(me)
       })
       .catch(() => {})
       .finally(() => setIsLoading(false))
@@ -159,6 +164,42 @@ export default function DashboardPage() {
             </button>
           </div>
 
+          {/* Tab bar — only shows when user is admin */}
+          {currentUser?.is_admin && (
+            <div className="flex gap-1 p-1 rounded-xl bg-muted w-fit">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all',
+                  activeTab === 'overview'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <LayoutDashboard className="h-3.5 w-3.5" />
+                Overview
+              </button>
+              <button
+                onClick={() => setActiveTab('admin')}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all',
+                  activeTab === 'admin'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Shield className="h-3.5 w-3.5" />
+                Admin
+              </button>
+            </div>
+          )}
+
+          {/* Admin tab */}
+          {activeTab === 'admin' && currentUser?.is_admin && <AdminTab />}
+
+          {/* Overview tab content */}
+          {activeTab === 'overview' && <>
+
           {/* Stat cards — 2×2 + wide */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard
@@ -167,7 +208,9 @@ export default function DashboardPage() {
               value={isLoading ? '—' : documents.length}
               colorClass="bg-blue-500/10 text-blue-500"
               sub={billing
-                ? `${Math.max(0, billing.doc_limit - documents.length)} slots left (${billing.plan})`
+                ? billing.doc_limit === -1
+                  ? `${documents.length} indexed · unlimited`
+                  : `${Math.max(0, billing.doc_limit - documents.length)} slots left (${billing.plan})`
                 : `${documents.length} indexed`}
             />
             <StatCard
@@ -366,6 +409,8 @@ export default function DashboardPage() {
               RAG Q&amp;A · Free plan
             </span>
           </div>
+
+          </>}
 
         </div>
       </div>
