@@ -1,9 +1,13 @@
 ragqa.duckdns.org {
-    root * /usr/share/caddy
-    file_server
-    try_files {path} /index.html
+    handle /api/* {
+        reverse_proxy backend:8000 {
+            flush_interval -1
+        }
+    }
 
-    reverse_proxy /api/* backend:8000 {
-        flush_interval -1
+    handle {
+        root * /usr/share/caddy
+        try_files {path} /index.html
+        file_server
     }
 }

@@ -19,6 +19,8 @@ frontend/dist/
 
 # Docker
 *.log
+docker-compose.override.yml
+frontend/Caddyfile.local
 
 # IDE
 .vscode/

@@ -28,3 +28,6 @@ class User(Base):
     plan = Column(String, nullable=False, default="free", server_default="free")
     stripe_customer_id = Column(String, nullable=True, index=True)
     stripe_subscription_id = Column(String, nullable=True)
+
+    # Admin
+    is_admin = Column(Boolean, default=False, nullable=False, server_default="0")

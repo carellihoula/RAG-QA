@@ -20,18 +20,30 @@ router = APIRouter(prefix='/documents', tags=['documents'])
 doc_service = DocumentService()
 
 
-async def _index_file_task(doc_id: str, file_path: Path, filename: str) -> None:
+async def _index_file_task(doc_id: str, file_path: Path, filename: str, user_id: str = "") -> None:
+    from app.services import s3_service
     try:
         docs, source_type = await asyncio.to_thread(load_file, file_path)
-        response = await rag_service.index_from_docs(doc_id, docs, filename)
+        response = await rag_service.index_from_docs(doc_id, docs, filename, source_type=source_type)
         try:
             title = await rag_service.generate_title(doc_id)
         except Exception:
             title = None
+
+        s3_key = None
+        if s3_service.s3_enabled():
+            try:
+                s3_key = await asyncio.to_thread(
+                    s3_service.upload_file, file_path, doc_id, filename, user_id
+                )
+            except Exception:
+                pass
+
+        file_path.unlink(missing_ok=True)
         doc_service.update_after_indexing(
             doc_id, title=title,
             page_count=response.page_count, chunk_count=response.chunk_count,
-            source_type=source_type, status='ready',
+            source_type=source_type, status='ready', s3_key=s3_key,
         )
     except Exception as e:
         file_path.unlink(missing_ok=True)
@@ -41,7 +53,7 @@ async def _index_file_task(doc_id: str, file_path: Path, filename: str) -> None:
 async def _index_url_task(doc_id: str, url: str, source_type_input: str) -> None:
     try:
         docs, source_type, auto_title = await asyncio.to_thread(load_web, source_type_input, url)
-        response = await rag_service.index_from_docs(doc_id, docs, auto_title)
+        response = await rag_service.index_from_docs(doc_id, docs, auto_title, source_type=source_type)
         title = auto_title
         if source_type == 'pdf':
             try:
@@ -71,7 +83,7 @@ async def upload_document(
         page_count=0, chunk_count=0, status='processing',
         user_id=str(current_user.id),
     )
-    background_tasks.add_task(_index_file_task, doc_id, file_path, file.filename)
+    background_tasks.add_task(_index_file_task, doc_id, file_path, file.filename, str(current_user.id))
     return DocumentResponse(
         doc_id=doc_id, filename=file.filename, title=None,
         page_count=0, chunk_count=0, indexed_at=now, status='processing',

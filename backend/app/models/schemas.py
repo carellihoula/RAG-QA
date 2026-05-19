@@ -85,12 +85,36 @@ class UserOut(BaseModel):
     email: str
     display_name: Optional[str] = None
     is_active: bool = True
+    is_admin: bool = False
     created_at: datetime
 
     @field_validator('id', mode='before')
     @classmethod
     def coerce_id(cls, v):
         return str(v)
+
+
+class AdminUserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    email: str
+    display_name: Optional[str] = None
+    is_active: bool
+    is_admin: bool
+    plan: str
+    created_at: datetime
+
+    @field_validator('id', mode='before')
+    @classmethod
+    def coerce_admin_id(cls, v):
+        return str(v)
+
+
+class AdminUserUpdate(BaseModel):
+    display_name: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_admin: Optional[bool] = None
+    plan: Optional[Literal['free', 'pro']] = None
 
 
 class RefreshRequest(BaseModel):

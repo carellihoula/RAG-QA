@@ -5,7 +5,6 @@ from typing import AsyncGenerator, Optional
 import psycopg
 
 from langchain_community.document_loaders import PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_postgres.vectorstores import PGVector
 from langchain_community.retrievers import BM25Retriever
@@ -65,21 +64,13 @@ class RAGService:
 
     # ── Indexing ──────────────────────────────────────────────────────
 
-    async def index_from_docs(self, doc_id: str, docs: list, filename: str) -> DocumentResponse:
+    async def index_from_docs(self, doc_id: str, docs: list, filename: str, source_type: str = 'pdf') -> DocumentResponse:
         """Pipeline: pre-loaded LangChain documents → chunks → PGVector (async)."""
+        from app.services.chunking_service import chunking_service
+
         page_count = len(docs)
-
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=settings.chunk_size,
-            chunk_overlap=settings.chunk_overlap,
-            separators=["\n\n", "\n", " ", ""],
-        )
-        chunks = splitter.split_documents(docs)
+        chunks = chunking_service.chunk(docs, source_type)
         chunk_count = len(chunks)
-
-        # PostgreSQL rejects NUL bytes in text fields
-        for chunk in chunks:
-            chunk.page_content = chunk.page_content.replace('\x00', ' ')
 
         await PGVector.afrom_documents(
             documents=chunks,

@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     # Base URL of the frontend (used in email links)
     frontend_url: str = "http://localhost:3000"
 
+    # AWS S3
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    aws_region: str = "eu-west-3"
+    s3_bucket: str = ""
+
     # Stripe
     stripe_secret_key: str = ""
     stripe_publishable_key: str = ""

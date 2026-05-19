@@ -95,6 +95,7 @@ class DocumentService:
         source_type: Optional[str] = None,
         status: str = 'ready',
         error: Optional[str] = None,
+        s3_key: Optional[str] = None,
     ) -> None:
         meta = self.load_metadata(doc_id)
         if not meta:
@@ -112,6 +113,8 @@ class DocumentService:
             meta['source_type'] = source_type
         if error:
             meta['error'] = error
+        if s3_key:
+            meta['s3_key'] = s3_key
         meta_path = self.get_index_path(doc_id) / 'metadata.json'
         meta_path.write_text(json.dumps(meta))
 
@@ -182,10 +185,16 @@ class DocumentService:
         """Permanently deletes the source file, metadata, and vector index."""
         import shutil
         from app.services.rag_service import rag_service
+        from app.services import s3_service
 
         src = self.get_source_file(doc_id)
         if src and src.exists():
             src.unlink()
+
+        meta = self.load_metadata(doc_id)
+        if s3_key := meta.get('s3_key'):
+            s3_service.delete_file(s3_key)
+
         index_path = self.get_index_path(doc_id)
         if index_path.exists():
             shutil.rmtree(index_path)
