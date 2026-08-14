@@ -1,4 +1,3 @@
-import json
 import uuid
 
 import stripe
@@ -6,6 +5,8 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import SessionLocal
+from app.models.document import Document
 from app.models.user import User
 
 stripe.api_key = settings.stripe_secret_key
@@ -17,23 +18,12 @@ PLAN_LIMITS = {
 
 
 def get_doc_count(user_id: str) -> int:
-    """Count on-disk documents belonging to user_id (in_library or not)."""
-    if not settings.index_dir.exists():
-        return 0
-    count = 0
-    for index_path in settings.index_dir.iterdir():
-        if not index_path.is_dir():
-            continue
-        meta_path = index_path / "metadata.json"
-        if not meta_path.exists():
-            continue
-        try:
-            meta = json.loads(meta_path.read_text())
-        except Exception:
-            continue
-        if meta.get("user_id") == user_id:
-            count += 1
-    return count
+    """Count documents belonging to user_id (in_library or not)."""
+    db = SessionLocal()
+    try:
+        return db.query(Document).filter_by(user_id=user_id).count()
+    finally:
+        db.close()
 
 
 def check_quota(user: User) -> None:

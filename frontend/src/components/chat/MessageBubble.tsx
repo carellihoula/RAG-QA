@@ -212,25 +212,6 @@ function SourceCards({ sources, docTitle }: { sources: NonNullable<Message['sour
   )
 }
 
-// ── Thinking bubble ────────────────────────────────────────────────────────────
-
-export function ThinkingBubble() {
-  return (
-    <div className="flex gap-3 animate-fade-in">
-      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md">
-        <Sparkles className="h-3.5 w-3.5 text-white animate-pulse" />
-      </div>
-      <div className="bg-card border border-border/80 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
-        <div className="flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-pulse" />
-          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-pulse [animation-delay:150ms]" />
-          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-pulse [animation-delay:300ms]" />
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function MessageBubble({ msg, docTitle }: MessageBubbleProps) {
@@ -282,12 +263,12 @@ export function MessageBubble({ msg, docTitle }: MessageBubbleProps) {
 
       <div className="max-w-[85%] flex flex-col gap-1">
         <div className="text-sm leading-relaxed pt-1">
-          <div className="[&>*:last-child]:inline">
+          <div className="contents [&>*:last-child]:inline">
             <MarkdownContent content={msg.content} />
-            {msg.streaming && (
-              <span className="inline-block w-[2px] h-[0.85em] rounded-full bg-current align-text-bottom ml-[2px] animate-cursor-blink" />
-            )}
           </div>
+          {msg.streaming && (
+            <span className="inline-block w-[2px] h-[0.85em] rounded-full bg-foreground align-text-bottom ml-[2px] animate-cursor-blink" />
+          )}
 
           {msg.sources && msg.sources.length > 0 && !msg.streaming && (
             <SourceCards sources={msg.sources} docTitle={docTitle} />

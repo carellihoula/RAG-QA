@@ -15,6 +15,8 @@ import {
   ContextMenuTrigger,
   ContextMenuLabel,
 } from "@/components/ui/context-menu";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useChatContext } from "@/context/ChatContext";
 import { KB_COLORS, MAX_KBS } from "@/components/chat/constants";
@@ -53,30 +55,31 @@ export function KbSection() {
   return (
     <div className="px-3 pt-3 pb-1 flex-shrink-0">
       <div className="flex items-center justify-between px-1 mb-2">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-muted-foreground flex items-center gap-1">
-          <Library className="h-3 w-3" />
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-muted-foreground">
           Knowledge Bases
           {knowledgeBases.length > 0 && (
-            <span className="bg-sidebar-accent rounded-full px-1.5 py-px text-[10px]">
+            <span className="ml-1.5 bg-sidebar-accent rounded-full px-1.5 py-px text-[10px]">
               {knowledgeBases.length}
             </span>
           )}
         </p>
         {knowledgeBases.length < MAX_KBS && (
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setIsCreatingKb((v) => !v)}
-            className="h-5 w-5 rounded-md flex items-center justify-center text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 transition-colors"
+            className="h-5 w-5 rounded-md text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10"
             title="New Knowledge Base"
           >
             <Plus className="h-3.5 w-3.5" />
-          </button>
+          </Button>
         )}
       </div>
 
       {/* Create KB form */}
       {isCreatingKb && (
         <div className="mb-2 p-2.5 rounded-xl border bg-card flex flex-col gap-2 shadow-sm">
-          <input
+          <Input
             ref={kbInputRef}
             value={newKbName}
             onChange={(e) => setNewKbName(e.target.value)}
@@ -85,7 +88,7 @@ export function KbSection() {
               if (e.key === "Escape") setIsCreatingKb(false);
             }}
             placeholder="Knowledge Base name…"
-            className="text-xs bg-transparent outline-none border-b border-border pb-1 w-full"
+            className="h-auto text-xs bg-transparent border-0 border-b border-border rounded-none px-0 pb-1 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 w-full"
           />
           <div className="flex items-center gap-1">
             {Object.entries(KB_COLORS).map(([color, cls]) => (
@@ -103,22 +106,23 @@ export function KbSection() {
             ))}
           </div>
           <div className="flex gap-1.5">
-            <button
+            <Button
               onClick={handleCreateKb}
               disabled={!newKbName.trim()}
-              className="flex-1 text-[10px] py-1 rounded-md bg-blue-600 text-white font-medium disabled:opacity-40"
+              className="flex-1 h-auto text-[10px] py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-medium"
             >
               Create
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
               onClick={() => {
                 setIsCreatingKb(false);
                 setNewKbName("");
               }}
-              className="flex-1 text-[10px] py-1 rounded-md bg-muted text-muted-foreground font-medium"
+              className="flex-1 h-auto text-[10px] py-1 rounded-md font-medium"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -126,9 +130,12 @@ export function KbSection() {
       {/* KB list */}
       <div className="flex flex-col gap-0.5">
         {knowledgeBases.length === 0 && !isCreatingKb && (
-          <p className="text-[10px] text-sidebar-muted-foreground/50 px-1 py-1.5 leading-relaxed">
-            Group documents by topic or team.
-          </p>
+          <div className="flex flex-col items-center justify-center gap-2 py-6 px-4 text-center">
+            <Library className="h-6 w-6 text-sidebar-muted-foreground/30" />
+            <p className="text-[10px] text-sidebar-muted-foreground/50 leading-relaxed">
+              Group documents by topic or team.
+            </p>
+          </div>
         )}
         {knowledgeBases.map((kb) => {
           const colors = KB_COLORS[kb.color] ?? KB_COLORS.blue;
@@ -140,19 +147,21 @@ export function KbSection() {
                 <ContextMenuTrigger asChild>
                   <div
                     className={cn(
-                      "group flex items-center gap-1 px-1 py-1 rounded-lg transition-all duration-150 cursor-pointer",
+                      "group flex items-center gap-1 px-1 py-2 rounded-lg transition-all duration-150 cursor-pointer",
                       isActive
                         ? `${colors.bg} ${colors.text} ring-1 ring-inset ring-current/20`
                         : "text-sidebar-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                     )}
                   >
                     {/* Expand toggle */}
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleKbExpand(kb.id);
                       }}
-                      className="h-5 w-5 rounded flex items-center justify-center flex-shrink-0 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                      className="h-5 w-5 flex-shrink-0 hover:bg-black/5 dark:hover:bg-white/5"
                       aria-label={isExpanded ? "Collapse" : "Expand"}
                     >
                       <ChevronDown
@@ -161,7 +170,7 @@ export function KbSection() {
                           !isExpanded && "-rotate-90",
                         )}
                       />
-                    </button>
+                    </Button>
 
                     {/* KB row — click to select for chat */}
                     <button
@@ -199,16 +208,18 @@ export function KbSection() {
                     </button>
 
                     {/* Delete — always visible on touch, hover-reveal on desktop */}
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       aria-label="Delete knowledge base"
-                      className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-0.5 rounded hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0"
+                      className="h-5 w-5 p-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:text-red-400 hover:bg-red-400/10 flex-shrink-0"
                       onClick={(e) => {
                         e.stopPropagation();
                         confirmDeleteKb(kb);
                       }}
                     >
                       <Trash2 className="h-3 w-3" />
-                    </button>
+                    </Button>
                   </div>
                 </ContextMenuTrigger>
                 <ContextMenuContent className="w-48">
@@ -281,13 +292,15 @@ export function KbSection() {
                               </span>
                             )}
                           </button>
-                          <button
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => confirmRemoveFromKb(kb, doc)}
-                            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-0.5 rounded hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0"
+                            className="h-5 w-5 p-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:text-red-400 hover:bg-red-400/10 flex-shrink-0"
                             aria-label="Remove from KB"
                           >
                             <Minus className="h-2.5 w-2.5" />
-                          </button>
+                          </Button>
                         </div>
                       );
                     })

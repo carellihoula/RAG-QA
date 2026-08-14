@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from 'react'
 import { MessageSquare, Library, Loader2, ArrowUp, Zap, X, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useChatContext } from '@/context/ChatContext'
-import { MessageBubble, ThinkingBubble } from './MessageBubble'
+import { MessageBubble } from './MessageBubble'
 
 const SUGGESTIONS = [
   'Summarize this document',
@@ -57,10 +57,6 @@ export function ChatPanel() {
     textareaRef.current?.focus()
   }
 
-  // Still "thinking" while the streaming assistant placeholder has no tokens yet
-  const lastMsg = messages[messages.length - 1]
-  const isThinking = loading && lastMsg?.role === 'assistant' && !lastMsg.content
-
   // doc title to pass to source cards
   const docTitle = selectedKb?.name ?? selectedDoc?.title ?? selectedDoc?.filename
 
@@ -103,8 +99,6 @@ export function ChatPanel() {
         {messages.map((msg, i) => (
           <MessageBubble key={i} msg={msg} docTitle={docTitle} />
         ))}
-
-        {isThinking && <ThinkingBubble />}
 
         <div ref={bottomRef} />
       </div>

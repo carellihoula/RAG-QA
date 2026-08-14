@@ -209,7 +209,10 @@ class RAGService:
         messages = [
             SystemMessage(
                 content=(
-                    "You are a helpful assistant. Answer the user's question based solely "
+                    "You are a helpful assistant answering questions about the document below. "
+                    "For greetings or general conversation, respond naturally and briefly — "
+                    "you don't need the context for that. "
+                    "For questions about the document's content, answer based solely "
                     "on the context below. Be concise and accurate. "
                     "If the answer is not in the context, say so clearly.\n\n"
                     f"Context:\n{context}"
@@ -310,7 +313,10 @@ class RAGService:
             system_prompt.rstrip()
             if system_prompt
             else (
-                "You are a helpful assistant. Answer the user's question based solely "
+                "You are a helpful assistant answering questions about the documents below. "
+                "For greetings or general conversation, respond naturally and briefly — "
+                "you don't need the context for that. "
+                "For questions about the documents' content, answer based solely "
                 "on the context below. Be concise and accurate. "
                 "If the answer is not in the context, say so clearly."
             )

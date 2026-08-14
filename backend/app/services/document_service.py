@@ -1,5 +1,4 @@
 import uuid
-import json
 import aiofiles
 from pathlib import Path
 from datetime import datetime, timezone
@@ -7,12 +6,14 @@ from typing import Optional
 
 from fastapi import UploadFile, HTTPException
 from app.config import settings
+from app.database import SessionLocal
+from app.models.document import Document
 from app.models.schemas import DocumentListItem
 from app.loaders.file_loader import SUPPORTED_EXTENSIONS
 
 
 class DocumentService:
-    """Manages document files and metadata on disk."""
+    """Manages document files on disk/S3 and their metadata in Postgres."""
 
     # ── Upload ────────────────────────────────────────────────────────
 
@@ -38,7 +39,11 @@ class DocumentService:
         return settings.index_dir / doc_id
 
     def doc_exists(self, doc_id: str) -> bool:
-        return (self.get_index_path(doc_id) / 'metadata.json').exists()
+        db = SessionLocal()
+        try:
+            return db.query(Document.id).filter_by(id=doc_id).first() is not None
+        finally:
+            db.close()
 
     def get_source_file(self, doc_id: str) -> Optional[Path]:
         """Returns the uploaded file path (any extension) if it exists."""
@@ -47,12 +52,11 @@ class DocumentService:
         return None
 
     def require_doc(self, doc_id: str, user_id: Optional[str] = None) -> None:
-        if not self.doc_exists(doc_id):
+        meta = self.load_metadata(doc_id)
+        if not meta:
             raise HTTPException(status_code=404, detail=f'Document {doc_id} not found')
-        if user_id is not None:
-            meta = self.load_metadata(doc_id)
-            if meta.get('user_id') != user_id:
-                raise HTTPException(status_code=404, detail=f'Document {doc_id} not found')
+        if user_id is not None and meta.get('user_id') != user_id:
+            raise HTTPException(status_code=404, detail=f'Document {doc_id} not found')
 
     # ── Metadata ──────────────────────────────────────────────────────
 
@@ -70,20 +74,24 @@ class DocumentService:
         user_id: Optional[str] = None,
         status: str = 'ready',
     ) -> None:
-        meta_path = self.get_index_path(doc_id) / 'metadata.json'
-        meta_path.parent.mkdir(parents=True, exist_ok=True)
-        meta_path.write_text(json.dumps({
-            'filename': filename,
-            'title': title,
-            'indexed_at': indexed_at.isoformat(),
-            'page_count': page_count,
-            'chunk_count': chunk_count,
-            'in_library': in_library,
-            'source_type': source_type,
-            'source_url': source_url,
-            'user_id': user_id,
-            'status': status,
-        }))
+        db = SessionLocal()
+        try:
+            db.merge(Document(
+                id=doc_id,
+                user_id=user_id,
+                filename=filename,
+                title=title,
+                indexed_at=indexed_at,
+                page_count=page_count,
+                chunk_count=chunk_count,
+                in_library=in_library,
+                source_type=source_type,
+                source_url=source_url,
+                status=status,
+            ))
+            db.commit()
+        finally:
+            db.close()
 
     def update_after_indexing(
         self,
@@ -97,41 +105,65 @@ class DocumentService:
         error: Optional[str] = None,
         s3_key: Optional[str] = None,
     ) -> None:
-        meta = self.load_metadata(doc_id)
-        if not meta:
-            return
-        meta['status'] = status
-        if title is not None:
-            meta['title'] = title
-        if filename is not None:
-            meta['filename'] = filename
-        if page_count:
-            meta['page_count'] = page_count
-        if chunk_count:
-            meta['chunk_count'] = chunk_count
-        if source_type:
-            meta['source_type'] = source_type
-        if error:
-            meta['error'] = error
-        if s3_key:
-            meta['s3_key'] = s3_key
-        meta_path = self.get_index_path(doc_id) / 'metadata.json'
-        meta_path.write_text(json.dumps(meta))
+        db = SessionLocal()
+        try:
+            doc = db.query(Document).filter_by(id=doc_id).first()
+            if not doc:
+                return
+            doc.status = status
+            if title is not None:
+                doc.title = title
+            if filename is not None:
+                doc.filename = filename
+            if page_count:
+                doc.page_count = page_count
+            if chunk_count:
+                doc.chunk_count = chunk_count
+            if source_type:
+                doc.source_type = source_type
+            if error:
+                doc.error = error
+            if s3_key:
+                doc.s3_key = s3_key
+            db.commit()
+        finally:
+            db.close()
 
     def load_metadata(self, doc_id: str) -> dict:
-        meta_path = self.get_index_path(doc_id) / 'metadata.json'
-        if meta_path.exists():
-            return json.loads(meta_path.read_text())
-        return {}
+        db = SessionLocal()
+        try:
+            doc = db.query(Document).filter_by(id=doc_id).first()
+            return self._doc_to_meta(doc) if doc else {}
+        finally:
+            db.close()
 
     def hide_from_library(self, doc_id: str) -> None:
         """Removes doc from library view but keeps files for KB use."""
-        index_path = self.get_index_path(doc_id)
-        meta_path = index_path / 'metadata.json'
-        if meta_path.exists():
-            meta = json.loads(meta_path.read_text())
-            meta['in_library'] = False
-            meta_path.write_text(json.dumps(meta))
+        db = SessionLocal()
+        try:
+            doc = db.query(Document).filter_by(id=doc_id).first()
+            if doc:
+                doc.in_library = False
+                db.commit()
+        finally:
+            db.close()
+
+    @staticmethod
+    def _doc_to_meta(doc: Document) -> dict:
+        return {
+            'filename': doc.filename,
+            'title': doc.title,
+            'indexed_at': doc.indexed_at.isoformat() if doc.indexed_at else None,
+            'page_count': doc.page_count,
+            'chunk_count': doc.chunk_count,
+            'in_library': doc.in_library,
+            'source_type': doc.source_type,
+            'source_url': doc.source_url,
+            'user_id': str(doc.user_id) if doc.user_id else None,
+            'status': doc.status,
+            'error': doc.error,
+            's3_key': doc.s3_key,
+        }
 
     # ── List / get ────────────────────────────────────────────────────
 
@@ -141,7 +173,7 @@ class DocumentService:
             filename=meta.get('filename', doc_id),
             title=meta.get('title'),
             indexed_at=datetime.fromisoformat(meta['indexed_at'])
-                if 'indexed_at' in meta else datetime.now(timezone.utc),
+                if meta.get('indexed_at') else datetime.now(timezone.utc),
             page_count=meta.get('page_count'),
             chunk_count=meta.get('chunk_count'),
             in_library=meta.get('in_library', True),
@@ -152,28 +184,18 @@ class DocumentService:
 
     def list_documents(self, user_id: Optional[str] = None) -> list[DocumentListItem]:
         """Returns in-library documents. If user_id is given, only that user's docs."""
-        docs = []
-        if not settings.index_dir.exists():
-            return []
-        for index_path in settings.index_dir.iterdir():
-            if not index_path.is_dir():
-                continue
-            meta_path = index_path / 'metadata.json'
-            if not meta_path.exists():
-                continue
-            meta = json.loads(meta_path.read_text())
-            if not meta.get('in_library', True):
-                continue
-            if user_id is not None and meta.get('user_id') != user_id:
-                continue
-            docs.append(self._meta_to_item(index_path.name, meta))
-        return sorted(docs, key=lambda d: d.indexed_at, reverse=True)
+        db = SessionLocal()
+        try:
+            query = db.query(Document).filter_by(in_library=True)
+            if user_id is not None:
+                query = query.filter_by(user_id=user_id)
+            docs = query.order_by(Document.indexed_at.desc()).all()
+            return [self._meta_to_item(doc.id, self._doc_to_meta(doc)) for doc in docs]
+        finally:
+            db.close()
 
     def get_document_by_id(self, doc_id: str) -> Optional[DocumentListItem]:
         """Returns a document regardless of in_library status."""
-        index_path = self.get_index_path(doc_id)
-        if not index_path.exists():
-            return None
         meta = self.load_metadata(doc_id)
         if not meta:
             return None
@@ -199,3 +221,10 @@ class DocumentService:
         if index_path.exists():
             shutil.rmtree(index_path)
         rag_service.delete_index(doc_id)
+
+        db = SessionLocal()
+        try:
+            db.query(Document).filter_by(id=doc_id).delete()
+            db.commit()
+        finally:
+            db.close()

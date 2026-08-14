@@ -6,6 +6,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useChatContext } from "@/context/ChatContext";
 import { KB_COLORS } from "@/components/chat/constants";
@@ -70,33 +72,37 @@ export function DocSection() {
               </span>
             )}
           </p>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setShowAddSource(true)}
-            className="h-5 w-5 rounded-md flex items-center justify-center text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 transition-colors"
+            className="h-5 w-5 rounded-md text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10"
             title="Add source"
           >
             <Plus className="h-3.5 w-3.5" />
-          </button>
+          </Button>
         </div>
 
         {/* Search input */}
         {documents.length > 0 && (
           <div className="flex items-center gap-1.5 rounded-lg bg-sidebar-accent px-2 py-1.5 mb-2">
             <Search className="h-3 w-3 flex-shrink-0 text-sidebar-muted-foreground/60" />
-            <input
+            <Input
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search documents…"
-              className="flex-1 bg-transparent text-xs text-sidebar-foreground placeholder:text-sidebar-muted-foreground/50 outline-none min-w-0"
+              className="h-auto flex-1 border-0 bg-transparent p-0 text-xs text-sidebar-foreground placeholder:text-sidebar-muted-foreground/50 shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0 min-w-0"
             />
             {query ? (
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => setQuery("")}
-                className="text-sidebar-muted-foreground/50 hover:text-sidebar-muted-foreground transition-colors"
+                className="h-4 w-4 text-sidebar-muted-foreground/50 hover:text-sidebar-muted-foreground hover:bg-transparent"
               >
                 <X className="h-3 w-3" />
-              </button>
+              </Button>
             ) : (
               <kbd className="text-[9px] text-sidebar-muted-foreground/40 font-mono border border-sidebar-border rounded px-0.5">/</kbd>
             )}
@@ -105,13 +111,14 @@ export function DocSection() {
 
         {/* Add source — shown only when no docs */}
         {documents.length === 0 && (
-          <button
+          <Button
+            variant="outline"
             onClick={() => setShowAddSource(true)}
-            className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-sidebar-border py-2 text-xs font-medium text-sidebar-muted-foreground transition-all duration-200 hover:border-blue-500/50 hover:text-blue-500 hover:bg-blue-500/5"
+            className="w-full h-auto gap-2 rounded-lg border-dashed border-sidebar-border bg-transparent py-2 text-xs font-medium text-sidebar-muted-foreground hover:border-blue-500/50 hover:text-blue-500 hover:bg-blue-500/5"
           >
             <Plus className="h-3.5 w-3.5" />
             Add source
-          </button>
+          </Button>
         )}
       </div>
 
@@ -190,22 +197,28 @@ export function DocSection() {
                   {knowledgeBases.length > 0 && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          aria-label="Add to Knowledge Base"
-                          className="p-0.5 rounded text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 transition-all"
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              e.currentTarget.click();
-                            }
-                          }}
+                        <Button
+                          asChild
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 p-0.5 text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10"
                         >
-                          <Library className="h-3 w-3" />
-                        </span>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            aria-label="Add to Knowledge Base"
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.currentTarget.click();
+                              }
+                            }}
+                          >
+                            <Library className="h-3 w-3" />
+                          </span>
+                        </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent side="right" align="start" className="w-44">
                         {knowledgeBases.map((kb) => {
@@ -229,25 +242,31 @@ export function DocSection() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    aria-label="Delete"
-                    className="p-0.5 rounded hover:text-red-400 hover:bg-red-400/10 transition-all"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      confirmDeleteDoc(doc);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 p-0.5 text-sidebar-muted-foreground hover:text-red-400 hover:bg-red-400/10"
+                  >
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Delete"
+                      onClick={(e) => {
                         e.stopPropagation();
                         confirmDeleteDoc(doc);
-                      }
-                    }}
-                  >
-                    <X className="h-3 w-3" />
-                  </span>
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          confirmDeleteDoc(doc);
+                        }
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </span>
+                  </Button>
                 </div>
               </button>
             );
