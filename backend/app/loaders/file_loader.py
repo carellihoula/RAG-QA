@@ -66,28 +66,39 @@ def _load_pptx(path: Path) -> list[LCDocument]:
 
 
 def _load_xlsx(path: Path) -> list[LCDocument]:
+    """Treats the first non-empty row of each sheet as the column header,
+    kept separate so it can be repeated on every downstream chunk."""
     import openpyxl
     wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
     docs = []
     for idx, sheet in enumerate(wb.worksheets, 1):
-        rows = [
-            ', '.join(str(c) for c in row if c is not None)
-            for row in sheet.iter_rows(values_only=True)
+        raw_rows = [
+            row for row in sheet.iter_rows(values_only=True)
             if any(c is not None for c in row)
         ]
-        if rows:
-            docs.append(LCDocument(
-                page_content=f'Sheet: {sheet.title}\n\n' + '\n'.join(rows),
-                metadata={'page': idx, 'source': str(path)},
-            ))
+        if not raw_rows:
+            continue
+        header, *data_rows = raw_rows
+        header_line = ', '.join(str(c) for c in header if c is not None)
+        data_lines = [', '.join(str(c) for c in row if c is not None) for row in data_rows]
+        docs.append(LCDocument(
+            page_content=f'Sheet: {sheet.title}\nColumns: {header_line}\n\n' + '\n'.join(data_lines),
+            metadata={'page': idx, 'source': str(path)},
+        ))
     return docs or [LCDocument(page_content='Empty spreadsheet', metadata={'page': 1})]
 
 
 def _load_html_file(path: Path) -> list[LCDocument]:
-    from bs4 import BeautifulSoup
+    import trafilatura
     content = path.read_text(encoding='utf-8', errors='ignore')
-    soup = BeautifulSoup(content, 'lxml')
-    for tag in soup(['script', 'style', 'nav', 'footer']):
-        tag.decompose()
-    text = soup.get_text(separator='\n', strip=True)
+    text = trafilatura.extract(content, output_format='markdown', include_formatting=True)
+
+    if not text:
+        # Fallback for fragments trafilatura can't confidently extract
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(content, 'lxml')
+        for tag in soup(['script', 'style', 'nav', 'footer']):
+            tag.decompose()
+        text = soup.get_text(separator='\n', strip=True)
+
     return [LCDocument(page_content=text, metadata={'page': 1, 'source': str(path)})]

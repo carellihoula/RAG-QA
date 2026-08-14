@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sparkles, X } from "lucide-react";
+import { Sparkles, X, Library } from "lucide-react";
 import { useChatContext } from "@/context/ChatContext";
 import { MAX_KBS } from "@/components/chat/constants";
 import { KbSection } from "./KbSection";
@@ -20,35 +20,57 @@ function useIsMobile() {
 function SidebarContent() {
   const { documents, knowledgeBases, billing, docUsagePct, kbUsagePct } = useChatContext();
   const docLimit  = billing?.doc_limit ?? 5;
-  const planLabel = billing?.plan === "pro" ? "Pro plan" : "Free plan";
+  const planLabel = billing?.plan === "pro" ? "Pro" : billing?.plan === "admin" ? "Admin" : "Free";
+  const docsDisplay = billing?.doc_limit === -1
+    ? `${documents.length} docs`
+    : `${documents.length}/${docLimit} docs`;
 
   return (
     <>
+      {/* Desktop-only header */}
+      <div className="hidden md:flex items-center gap-2 px-4 pt-4 pb-2 flex-shrink-0 border-b border-sidebar-border">
+        <Library className="h-3.5 w-3.5 text-sidebar-muted-foreground/60 flex-shrink-0" />
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-muted-foreground flex-1">
+          Sources
+        </span>
+        <span className="text-[10px] text-sidebar-muted-foreground/40">
+          {knowledgeBases.length} KB · {documents.length} docs
+        </span>
+      </div>
+
       <KbSection />
       <div className="mx-3 my-1.5 border-t border-sidebar-border flex-shrink-0" />
       <DocSection />
+
+      {/* Quota footer */}
       <div className="px-3 py-3 border-t border-sidebar-border flex-shrink-0">
-        <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center justify-between mb-1.5">
           <span className="flex items-center gap-1.5 text-[11px] font-medium text-sidebar-muted-foreground">
             <Sparkles className="h-3 w-3 text-blue-400" />
-            {planLabel}
+            {planLabel} plan
           </span>
           <span className="text-[10px] text-sidebar-muted-foreground/50">
-            {knowledgeBases.length}/{MAX_KBS} KB · {documents.length}/{docLimit} docs
+            {knowledgeBases.length}/{MAX_KBS} KB · {docsDisplay}
           </span>
         </div>
-        <div className="flex flex-col gap-0.5">
-          <div className="h-0.5 rounded-full bg-sidebar-accent overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-all duration-500"
-              style={{ width: `${docUsagePct}%` }}
-            />
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] text-sidebar-muted-foreground/40 w-6">Docs</span>
+            <div className="flex-1 h-1 rounded-full bg-sidebar-accent overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-all duration-500"
+                style={{ width: `${docUsagePct}%` }}
+              />
+            </div>
           </div>
-          <div className="h-0.5 rounded-full bg-sidebar-accent overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500 transition-all duration-500"
-              style={{ width: `${kbUsagePct}%` }}
-            />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] text-sidebar-muted-foreground/40 w-6">KB</span>
+            <div className="flex-1 h-1 rounded-full bg-sidebar-accent overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500 transition-all duration-500"
+                style={{ width: `${kbUsagePct}%` }}
+              />
+            </div>
           </div>
         </div>
       </div>

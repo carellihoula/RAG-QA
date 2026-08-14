@@ -51,12 +51,13 @@ export function KbSection() {
   } = useChatContext();
 
   return (
-    <div className="px-3 pt-4 pb-1 flex-shrink-0">
+    <div className="px-3 pt-3 pb-1 flex-shrink-0">
       <div className="flex items-center justify-between px-1 mb-2">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-muted-foreground">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-muted-foreground flex items-center gap-1">
+          <Library className="h-3 w-3" />
           Knowledge Bases
           {knowledgeBases.length > 0 && (
-            <span className="ml-1.5 bg-sidebar-accent rounded-full px-1.5 py-px text-[10px]">
+            <span className="bg-sidebar-accent rounded-full px-1.5 py-px text-[10px]">
               {knowledgeBases.length}
             </span>
           )}
@@ -197,10 +198,10 @@ export function KbSection() {
                       )}
                     </button>
 
-                    {/* Delete on hover */}
+                    {/* Delete — always visible on touch, hover-reveal on desktop */}
                     <button
                       aria-label="Delete knowledge base"
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0"
+                      className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-0.5 rounded hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0"
                       onClick={(e) => {
                         e.stopPropagation();
                         confirmDeleteKb(kb);
@@ -282,7 +283,7 @@ export function KbSection() {
                           </button>
                           <button
                             onClick={() => confirmRemoveFromKb(kb, doc)}
-                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0"
+                            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-0.5 rounded hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0"
                             aria-label="Remove from KB"
                           >
                             <Minus className="h-2.5 w-2.5" />

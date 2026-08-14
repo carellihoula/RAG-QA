@@ -339,11 +339,21 @@ function SidebarInner({
               className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             >
               <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-sm flex-shrink-0">
-                <span className="text-white font-bold text-xs">R</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M4 4h7v7H4z" fill="white" opacity="0.95" />
+                  <path d="M13 4h7v7h-7z" fill="white" opacity="0.95" />
+                  <path d="M4 13h7v7H4z" fill="white" opacity="0.95" />
+                  <path d="M13 13h7v7h-7z" fill="white" opacity="0.40" />
+                </svg>
               </div>
-              <span className="font-semibold text-sidebar-foreground text-sm tracking-tight">
-                RAG Q&amp;A
-              </span>
+              <div className="flex flex-col leading-none">
+                <span className="font-semibold text-sidebar-foreground text-sm tracking-tight">
+                  RAG Q&amp;A
+                </span>
+                <span className="text-[10px] text-sidebar-muted-foreground/60">
+                  Personal workspace
+                </span>
+              </div>
             </button>
           )}
           <button
@@ -359,6 +369,35 @@ function SidebarInner({
             />
           </button>
         </div>
+
+        {/* New conversation button */}
+        {isOpen ? (
+          <div className="px-3">
+            <button
+              onClick={() => navigate('/app')}
+              className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-sidebar-muted-foreground border border-sidebar-border hover:border-blue-500/40 hover:text-blue-500 hover:bg-blue-500/5 transition-all duration-150"
+            >
+              <MessageSquare className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="flex-1 text-left">New conversation</span>
+              <kbd className="text-[9px] font-mono border border-sidebar-border rounded px-0.5 opacity-50">⌘N</kbd>
+            </button>
+          </div>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex justify-center px-1">
+                <button
+                  onClick={() => navigate('/app')}
+                  aria-label="New conversation"
+                  className="h-8 w-8 rounded-lg flex items-center justify-center text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 border border-sidebar-border hover:border-blue-500/40 transition-colors"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                </button>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right">New conversation</TooltipContent>
+          </Tooltip>
+        )}
 
         {/* Nav */}
         <nav className="flex-1 px-2" aria-label="Navigation principale">

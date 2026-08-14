@@ -63,6 +63,8 @@ def verify_refresh_token(raw: str, db: Session) -> User:
     user = db.query(User).filter(User.refresh_token_hash == hashed).first()
     if not user or not user.refresh_token_expires:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
+    if not user.is_active:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
     if datetime.now(tz=timezone.utc) > _as_utc(user.refresh_token_expires):
         raise HTTPException(status_code=401, detail="Refresh token expired")
     return user
@@ -128,10 +130,10 @@ def login_user(email: str, password: str, db: Session) -> User:
 
 # ── Password reset ────────────────────────────────────────────────────────────
 
-def create_password_reset_token(email: str, db: Session) -> tuple[User, str]:
+def create_password_reset_token(email: str, db: Session) -> tuple[Optional[User], Optional[str]]:
     user = db.query(User).filter(User.email == email).first()
     if not user:
-        raise HTTPException(status_code=404, detail="No account found with that email")
+        return None, None
     raw = secrets.token_urlsafe(32)
     user.reset_token = _sha256(raw)
     user.reset_token_expires = datetime.now(tz=timezone.utc) + timedelta(hours=settings.reset_token_expire_hours)
@@ -189,7 +191,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     except (JWTError, TypeError, ValueError):
         raise credentials_exception
     user = db.get(User, user_id)
-    if not user:
+    if not user or not user.is_active:
         raise credentials_exception
     return user
 

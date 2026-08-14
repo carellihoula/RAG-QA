@@ -67,7 +67,8 @@ def logout(current_user: User = Depends(get_current_user), db: Session = Depends
 async def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """Send a password-reset link by email."""
     user, raw_token = create_password_reset_token(body.email, db)
-    await send_reset_email(user.email, raw_token)
+    if user and raw_token:
+        await send_reset_email(user.email, raw_token)
     return MessageResponse(message="If that email is registered, a reset link has been sent.")
 
 

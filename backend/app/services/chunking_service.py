@@ -29,17 +29,17 @@ class ChunkingService:
             'pptx':      self._slides,
             'txt':       self._paragraph,
             'md':        self._markdown,
-            'html':      self._paragraph,
-            'url':       self._paragraph,
-            'csv':       self._tabular,
-            'xlsx':      self._tabular,
+            'html':      self._markdown,
+            'url':       self._markdown,
+            'csv':       self._csv_rows,
+            'xlsx':      self._sheet_rows,
             'wikipedia': self._wikipedia,
             'arxiv':     self._arxiv,
             'rss':       self._rss,
         }
         chunks = strategies.get(source_type, self._prose)(docs)
         self._clean(chunks)
-        if source_type in ('md', 'wikipedia'):
+        if source_type in ('md', 'wikipedia', 'html', 'url'):
             self._inject_section_headers(chunks)
         return chunks
 
@@ -82,36 +82,73 @@ class ChunkingService:
                     chunks.append(section)
         return chunks or _PROSE.split_documents(docs)
 
-    def _tabular(self, docs: list[Document]) -> list[Document]:
-        """Row-level chunking for CSV/XLSX.
-        CSVLoader already produces one doc per row (self-describing key:value format).
-        For XLSX (one doc per sheet), group rows into batches to stay within chunk_size.
-        """
+    _TABULAR_MAX_ROWS = 40   # cap chunk density so a chunk stays a coherent retrieval unit
+    _TABULAR_OVERLAP  = 2    # rows repeated across a chunk boundary
+
+    def _csv_rows(self, docs: list[Document]) -> list[Document]:
+        """CSVLoader returns one Document per row (key:value format).
+        Group consecutive rows into chunks bounded by chunk_size AND row count,
+        with a small row overlap so a boundary-straddling query still sees context."""
+        chunks = []
+        n = len(docs)
+        i = 0
+        while i < n:
+            group = [docs[i]]
+            size = len(docs[i].page_content)
+            j = i + 1
+            while (
+                j < n
+                and len(group) < self._TABULAR_MAX_ROWS
+                and size + len(docs[j].page_content) < settings.chunk_size
+            ):
+                group.append(docs[j])
+                size += len(docs[j].page_content)
+                j += 1
+            chunks.append(Document(
+                page_content='\n\n'.join(d.page_content for d in group),
+                metadata={**docs[i].metadata, 'row_start': i + 1, 'row_end': j},
+            ))
+            i = max(j - self._TABULAR_OVERLAP, i + 1)
+        return chunks or docs
+
+    def _sheet_rows(self, docs: list[Document]) -> list[Document]:
+        """XLSX loader returns one Document per sheet: 'Sheet: x' + 'Columns: a, b, c'
+        header lines, then one line per data row. The header block is repeated on
+        every chunk so a chunk is never just bare values with no column context."""
         chunks = []
         for doc in docs:
             lines = doc.page_content.splitlines()
-
-            # CSVLoader rows are already small — keep as-is
-            if len(lines) <= 5:
-                chunks.append(doc)
+            if not lines:
                 continue
+            header_lines = []
+            idx = 0
+            while idx < len(lines) and (lines[idx].startswith('Sheet:') or lines[idx].startswith('Columns:')):
+                header_lines.append(lines[idx])
+                idx += 1
+            sheet_header = '\n'.join(header_lines)
+            data_lines = lines[idx:]
+            header_budget = len(sheet_header) + 1 if sheet_header else 0
 
-            # XLSX: sheet header + many data rows → group rows
-            sheet_header = lines[0] if lines[0].startswith('Sheet:') else ''
-            data_lines = lines[1:] if sheet_header else lines
-
-            group: list[str] = []
-            row_start = 1
-            for i, line in enumerate(data_lines, 1):
-                group.append(line)
-                candidate = (f"{sheet_header}\n" if sheet_header else '') + '\n'.join(group)
-                if len(candidate) >= settings.chunk_size or i == len(data_lines):
-                    chunks.append(Document(
-                        page_content=candidate.strip(),
-                        metadata={**doc.metadata, 'row_start': row_start, 'row_end': row_start + len(group) - 1},
-                    ))
-                    row_start += len(group)
-                    group = []
+            n = len(data_lines)
+            i = 0
+            while i < n:
+                group = [data_lines[i]]
+                size = header_budget + len(data_lines[i])
+                j = i + 1
+                while (
+                    j < n
+                    and len(group) < self._TABULAR_MAX_ROWS
+                    and size + len(data_lines[j]) < settings.chunk_size
+                ):
+                    group.append(data_lines[j])
+                    size += len(data_lines[j])
+                    j += 1
+                content = (f"{sheet_header}\n" if sheet_header else '') + '\n'.join(group)
+                chunks.append(Document(
+                    page_content=content.strip(),
+                    metadata={**doc.metadata, 'row_start': i + 1, 'row_end': j},
+                ))
+                i = max(j - self._TABULAR_OVERLAP, i + 1)
         return chunks or docs
 
     def _wikipedia(self, docs: list[Document]) -> list[Document]:
