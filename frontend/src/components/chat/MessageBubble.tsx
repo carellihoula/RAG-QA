@@ -1,8 +1,122 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Sparkles, ChevronRight, Copy, Check, ThumbsUp, ThumbsDown } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeHighlight from 'rehype-highlight'
+import type { Components } from 'react-markdown'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { Message } from '@/types'
+import 'highlight.js/styles/github-dark.css'
+
+// ── Clipboard ──────────────────────────────────────────────────────────────────
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+// ── Code block (with its own copy button) ───────────────────────────────────────
+
+function CodeBlock({ children }: { children?: React.ReactNode }) {
+  const [copied, setCopied] = useState(false)
+  const preRef = useRef<HTMLPreElement>(null)
+
+  async function handleCopyCode() {
+    const text = preRef.current?.textContent ?? ''
+    if (await copyText(text)) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }
+  }
+
+  return (
+    <div className="relative mb-2 last:mb-0">
+      <pre ref={preRef}>
+        {children}
+      </pre>
+      <button
+        onClick={handleCopyCode}
+        title={copied ? 'Copied' : 'Copy code'}
+        className="absolute top-2 right-2 h-6 w-6 rounded-md flex items-center justify-center text-zinc-400 hover:text-zinc-100 bg-zinc-800/60 hover:bg-zinc-800 transition-colors"
+      >
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      </button>
+    </div>
+  )
+}
+
+// ── Markdown rendering ────────────────────────────────────────────────────────
+// Compact overrides so LLM markdown output fits the small chat-bubble type scale
+// instead of the browser's default (large) prose spacing.
+
+const MARKDOWN_COMPONENTS: Components = {
+  p: ({ children }) => <p className="mb-2 last:mb-0 whitespace-pre-wrap break-words">{children}</p>,
+  ul: ({ children }) => <ul className="mb-2 last:mb-0 pl-4 list-disc space-y-0.5">{children}</ul>,
+  ol: ({ children }) => <ol className="mb-2 last:mb-0 pl-4 list-decimal space-y-0.5">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline underline-offset-2 hover:text-blue-400">
+      {children}
+    </a>
+  ),
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  h1: ({ children }) => <h1 className="mb-1.5 mt-3 first:mt-0 text-base font-semibold">{children}</h1>,
+  h2: ({ children }) => <h2 className="mb-1.5 mt-3 first:mt-0 text-sm font-semibold">{children}</h2>,
+  h3: ({ children }) => <h3 className="mb-1 mt-2 first:mt-0 text-sm font-semibold">{children}</h3>,
+  blockquote: ({ children }) => (
+    <blockquote className="mb-2 last:mb-0 border-l-2 border-border pl-3 italic text-muted-foreground">
+      {children}
+    </blockquote>
+  ),
+  hr: () => <hr className="my-3 border-border/60" />,
+  table: ({ children }) => (
+    <div className="mb-2 last:mb-0 overflow-x-auto">
+      <table className="text-xs border-collapse">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => <th className="border border-border px-2 py-1 text-left font-semibold bg-muted/50">{children}</th>,
+  td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
+  code: ({ className, children, ...props }) => {
+    const isBlock = /language-/.test(className ?? '')
+    if (isBlock) {
+      return <code className={cn(className, 'text-xs rounded-lg')} {...props}>{children}</code>
+    }
+    return (
+      <code className="rounded bg-muted px-1 py-0.5 text-[0.85em] font-mono" {...props}>
+        {children}
+      </code>
+    )
+  },
+  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeHighlight]}
+      components={MARKDOWN_COMPONENTS}
+    >
+      {content}
+    </ReactMarkdown>
+  )
+}
 
 interface MessageBubbleProps {
   msg: Message
@@ -166,14 +280,14 @@ export function MessageBubble({ msg, docTitle }: MessageBubbleProps) {
         <Sparkles className="h-3.5 w-3.5 text-white" />
       </div>
 
-      <div className="max-w-[78%] flex flex-col gap-1">
-        <div className="rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed shadow-sm bg-card border border-border/80">
-          <p className="whitespace-pre-wrap break-words">
-            {msg.content}
+      <div className="max-w-[85%] flex flex-col gap-1">
+        <div className="text-sm leading-relaxed pt-1">
+          <div className="[&>*:last-child]:inline">
+            <MarkdownContent content={msg.content} />
             {msg.streaming && (
               <span className="inline-block w-[2px] h-[0.85em] rounded-full bg-current align-text-bottom ml-[2px] animate-cursor-blink" />
             )}
-          </p>
+          </div>
 
           {msg.sources && msg.sources.length > 0 && !msg.streaming && (
             <SourceCards sources={msg.sources} docTitle={docTitle} />
