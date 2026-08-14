@@ -1,4 +1,4 @@
-import { FileText, Library, Eraser, PanelLeft } from "lucide-react";
+import { FileText, Library, Trash2, PanelLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -71,7 +71,7 @@ export function ChatHeader() {
                   </span>
                 )}
               </div>
-              {(selectedDoc!.page_count != null || selectedDoc!.chunk_count != null) && (
+              {isAdmin && (selectedDoc!.page_count != null || selectedDoc!.chunk_count != null) && (
                 <div className="hidden sm:flex items-center gap-1 ml-1 flex-shrink-0">
                   {selectedDoc!.page_count != null && (
                     <Badge variant="outline" className="text-[10px] h-4 font-mono">
@@ -111,7 +111,7 @@ export function ChatHeader() {
             title="Clear conversation"
             onClick={confirmClearConversation}
           >
-            <Eraser className="h-3.5 w-3.5" />
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
       </header>
