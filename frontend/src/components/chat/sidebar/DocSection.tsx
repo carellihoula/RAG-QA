@@ -1,4 +1,5 @@
-import { FileText, Globe, BookOpen, Atom, Rss, Table, FileCode, Plus, Library, X } from "lucide-react";
+import { useRef, useState, useEffect } from "react";
+import { FileText, Globe, BookOpen, Atom, Rss, Table, FileCode, Plus, Library, X, Search } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,10 +36,31 @@ export function DocSection() {
     handleToggleDocInKb,
   } = useChatContext();
 
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Press "/" to focus search
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const filtered = query.trim()
+    ? documents.filter((d) =>
+        (d.title ?? d.filename).toLowerCase().includes(query.toLowerCase()),
+      )
+    : documents;
+
   return (
     <>
-      {/* ── Documents section ── */}
-      <div className="px-3 pb-2 flex-shrink-0">
+      {/* ── Documents header ── */}
+      <div className="px-3 pb-1 flex-shrink-0">
         <div className="flex items-center justify-between px-1 mb-2">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-muted-foreground">
             Documents
@@ -48,14 +70,49 @@ export function DocSection() {
               </span>
             )}
           </p>
+          <button
+            onClick={() => setShowAddSource(true)}
+            className="h-5 w-5 rounded-md flex items-center justify-center text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 transition-colors"
+            title="Add source"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
         </div>
-        <button
-          onClick={() => setShowAddSource(true)}
-          className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-sidebar-border py-2 text-xs font-medium text-sidebar-muted-foreground transition-all duration-200 hover:border-blue-500/50 hover:text-blue-500 hover:bg-blue-500/5"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add source
-        </button>
+
+        {/* Search input */}
+        {documents.length > 0 && (
+          <div className="flex items-center gap-1.5 rounded-lg bg-sidebar-accent px-2 py-1.5 mb-2">
+            <Search className="h-3 w-3 flex-shrink-0 text-sidebar-muted-foreground/60" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search documents…"
+              className="flex-1 bg-transparent text-xs text-sidebar-foreground placeholder:text-sidebar-muted-foreground/50 outline-none min-w-0"
+            />
+            {query ? (
+              <button
+                onClick={() => setQuery("")}
+                className="text-sidebar-muted-foreground/50 hover:text-sidebar-muted-foreground transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            ) : (
+              <kbd className="text-[9px] text-sidebar-muted-foreground/40 font-mono border border-sidebar-border rounded px-0.5">/</kbd>
+            )}
+          </div>
+        )}
+
+        {/* Add source — shown only when no docs */}
+        {documents.length === 0 && (
+          <button
+            onClick={() => setShowAddSource(true)}
+            className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-sidebar-border py-2 text-xs font-medium text-sidebar-muted-foreground transition-all duration-200 hover:border-blue-500/50 hover:text-blue-500 hover:bg-blue-500/5"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add source
+          </button>
+        )}
       </div>
 
       {/* Document list */}
@@ -66,15 +123,20 @@ export function DocSection() {
             <p className="text-xs text-sidebar-muted-foreground leading-relaxed">
               No documents yet.
               <br />
-              Upload a PDF to start.
+              Upload a file or add a URL.
             </p>
           </div>
+        ) : filtered.length === 0 ? (
+          <p className="text-xs text-sidebar-muted-foreground/50 px-2 py-4 text-center">
+            No match for "{query}"
+          </p>
         ) : (
-          documents.map((doc) => {
+          filtered.map((doc) => {
             const docKbs = knowledgeBases.filter((kb) =>
               kb.doc_ids.includes(doc.doc_id),
             );
             const isActive = selectedDoc?.doc_id === doc.doc_id;
+            const sm = SOURCE_ICONS[doc.source_type ?? "pdf"] ?? SOURCE_ICONS.pdf;
             return (
               <button
                 key={doc.doc_id}
@@ -86,18 +148,12 @@ export function DocSection() {
                 )}
                 onClick={() => selectDocument(isActive ? null : doc)}
               >
-                {(() => {
-                  const sm =
-                    SOURCE_ICONS[doc.source_type ?? "pdf"] ?? SOURCE_ICONS.pdf;
-                  return (
-                    <sm.icon
-                      className={cn(
-                        "h-3.5 w-3.5 flex-shrink-0 transition-colors mt-0.5",
-                        isActive ? "text-primary" : sm.color,
-                      )}
-                    />
-                  );
-                })()}
+                <sm.icon
+                  className={cn(
+                    "h-3.5 w-3.5 flex-shrink-0 transition-colors mt-0.5",
+                    isActive ? "text-primary" : sm.color,
+                  )}
+                />
                 <div className="flex-1 min-w-0">
                   <span className="block truncate text-xs font-medium">
                     {doc.title ?? doc.filename}
@@ -106,12 +162,13 @@ export function DocSection() {
                     {(doc.page_count != null || doc.chunk_count != null) && (
                       <span className="text-[10px] text-sidebar-muted-foreground/50">
                         {doc.page_count != null ? `${doc.page_count}p` : ""}
-                        {doc.page_count != null && doc.chunk_count != null
-                          ? " · "
-                          : ""}
-                        {doc.chunk_count != null
-                          ? `${doc.chunk_count} chunks`
-                          : ""}
+                        {doc.page_count != null && doc.chunk_count != null ? " · " : ""}
+                        {doc.chunk_count != null ? `${doc.chunk_count} chunks` : ""}
+                      </span>
+                    )}
+                    {isActive && (
+                      <span className="text-[9px] px-1 rounded font-medium bg-primary/15 text-primary">
+                        in context
                       </span>
                     )}
                     {docKbs.map((kb) => {
@@ -119,11 +176,7 @@ export function DocSection() {
                       return (
                         <span
                           key={kb.id}
-                          className={cn(
-                            "text-[9px] px-1 rounded font-medium",
-                            c.bg,
-                            c.text,
-                          )}
+                          className={cn("text-[9px] px-1 rounded font-medium", c.bg, c.text)}
                         >
                           {kb.name}
                         </span>
@@ -132,25 +185,29 @@ export function DocSection() {
                   </div>
                 </div>
 
-                {/* Actions: add to KB + delete */}
-                <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0 mt-0.5 transition-all">
+                {/* Actions: add to KB + delete — always visible on touch, hover-reveal on desktop */}
+                <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0 mt-0.5 transition-all">
                   {knowledgeBases.length > 0 && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <span
                           role="button"
+                          tabIndex={0}
                           aria-label="Add to Knowledge Base"
                           className="p-0.5 rounded text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 transition-all"
                           onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              e.currentTarget.click();
+                            }
+                          }}
                         >
                           <Library className="h-3 w-3" />
                         </span>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        side="right"
-                        align="start"
-                        className="w-44"
-                      >
+                      <DropdownMenuContent side="right" align="start" className="w-44">
                         {knowledgeBases.map((kb) => {
                           const inKb = kb.doc_ids.includes(doc.doc_id);
                           const c = KB_COLORS[kb.color] ?? KB_COLORS.blue;
@@ -163,18 +220,9 @@ export function DocSection() {
                               }}
                               className="flex items-center gap-2 text-xs"
                             >
-                              <span
-                                className={cn(
-                                  "h-2 w-2 rounded-full flex-shrink-0",
-                                  c.dot,
-                                )}
-                              />
+                              <span className={cn("h-2 w-2 rounded-full flex-shrink-0", c.dot)} />
                               <span className="flex-1 truncate">{kb.name}</span>
-                              {inKb && (
-                                <span className="text-blue-500 text-[10px]">
-                                  ✓
-                                </span>
-                              )}
+                              {inKb && <span className="text-blue-500 text-[10px]">✓</span>}
                             </DropdownMenuItem>
                           );
                         })}
@@ -183,11 +231,19 @@ export function DocSection() {
                   )}
                   <span
                     role="button"
+                    tabIndex={0}
                     aria-label="Delete"
                     className="p-0.5 rounded hover:text-red-400 hover:bg-red-400/10 transition-all"
                     onClick={(e) => {
                       e.stopPropagation();
                       confirmDeleteDoc(doc);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        confirmDeleteDoc(doc);
+                      }
                     }}
                   >
                     <X className="h-3 w-3" />

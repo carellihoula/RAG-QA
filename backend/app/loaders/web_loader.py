@@ -19,21 +19,26 @@ def load_web(source_type: str, url: str) -> tuple[list[LCDocument], str, str]:
 
 def _load_url(url: str) -> tuple[list[LCDocument], str, str]:
     import requests
-    from bs4 import BeautifulSoup
+    import trafilatura
 
     headers = {'User-Agent': 'Mozilla/5.0 (compatible; RAG-QA/1.0)'}
     resp = requests.get(url, headers=headers, timeout=20)
     resp.raise_for_status()
 
-    soup = BeautifulSoup(resp.content, 'lxml')
-    title_tag = soup.find('title')
-    auto_title = title_tag.get_text(strip=True) if title_tag else url
+    # Pass raw bytes, not resp.text — requests' encoding guess is unreliable on
+    # pages without an explicit charset; trafilatura/lxml detect it more robustly.
+    text = trafilatura.extract(resp.content, output_format='markdown', include_formatting=True, url=url)
+    meta = trafilatura.extract_metadata(resp.content)
+    auto_title = (meta.title if meta and meta.title else None) or url
 
-    for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe']):
-        tag.decompose()
-
-    main = soup.find('main') or soup.find('article') or soup.find('body') or soup
-    text = main.get_text(separator='\n', strip=True)
+    if not text:
+        # Fallback for pages trafilatura can't confidently extract (e.g. JS-only shells)
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(resp.content, 'lxml')
+        for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe']):
+            tag.decompose()
+        main = soup.find('main') or soup.find('article') or soup.find('body') or soup
+        text = main.get_text(separator='\n', strip=True)
 
     return [LCDocument(page_content=text, metadata={'page': 1, 'source': url})], 'url', auto_title
 

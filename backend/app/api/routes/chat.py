@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.knowledge_base import KnowledgeBase
 from app.models.conversation import Conversation, ConversationMessage
 from app.models.schemas import ChatRequest, ChatResponse, KBChatRequest
+from app.api.routes.knowledge_bases import find_owned_kb, get_owned_kb
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 doc_service = DocumentService()
@@ -165,8 +166,13 @@ async def chat_stream(
 
 
 @router.delete("/session/{session_id}/{doc_id}", status_code=204)
-def clear_session(session_id: str, doc_id: str):
+def clear_session(
+    session_id: str,
+    doc_id: str,
+    current_user: User = Depends(get_current_user),
+):
     """Resets the conversational memory of a session."""
+    doc_service.require_doc(doc_id, user_id=str(current_user.id))
     rag_service.clear_session(session_id, doc_id)
 
 
@@ -179,11 +185,7 @@ async def kb_chat_stream(
     db: Session = Depends(get_db),
 ):
     """Stream a RAG answer across all documents in a Knowledge Base."""
-    kb = db.query(KnowledgeBase).filter_by(
-        id=uuid.UUID(request.kb_id), user_id=current_user.id
-    ).first()
-    if not kb:
-        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    kb = find_owned_kb(db, uuid.UUID(request.kb_id), current_user.id)
 
     doc_ids = [link.doc_id for link in kb.doc_links]
     if not doc_ids:
@@ -244,5 +246,9 @@ async def kb_chat_stream(
 
 
 @router.delete("/kb/session/{kb_id}/{session_id}", status_code=204)
-def clear_kb_session(kb_id: str, session_id: str):
-    rag_service.clear_kb_session(kb_id, session_id)
+def clear_kb_session(
+    kb_id: uuid.UUID,
+    session_id: str,
+    kb: KnowledgeBase = Depends(get_owned_kb),
+):
+    rag_service.clear_kb_session(str(kb_id), session_id)

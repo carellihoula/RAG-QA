@@ -13,7 +13,7 @@ export function DropOverlay() {
           <Upload className="h-7 w-7 text-blue-400" />
         </div>
         <div className="text-center">
-          <p className="text-base font-semibold">Drop your PDF here</p>
+          <p className="text-base font-semibold">Drop your file here</p>
           <p className="text-sm text-muted-foreground mt-0.5">
             Release to upload and index
           </p>

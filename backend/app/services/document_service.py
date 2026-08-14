@@ -51,7 +51,7 @@ class DocumentService:
             raise HTTPException(status_code=404, detail=f'Document {doc_id} not found')
         if user_id is not None:
             meta = self.load_metadata(doc_id)
-            if meta.get('user_id') and meta['user_id'] != user_id:
+            if meta.get('user_id') != user_id:
                 raise HTTPException(status_code=404, detail=f'Document {doc_id} not found')
 
     # ── Metadata ──────────────────────────────────────────────────────
@@ -164,7 +164,7 @@ class DocumentService:
             meta = json.loads(meta_path.read_text())
             if not meta.get('in_library', True):
                 continue
-            if user_id is not None and meta.get('user_id') and meta['user_id'] != user_id:
+            if user_id is not None and meta.get('user_id') != user_id:
                 continue
             docs.append(self._meta_to_item(index_path.name, meta))
         return sorted(docs, key=lambda d: d.indexed_at, reverse=True)
