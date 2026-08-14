@@ -23,6 +23,7 @@ import {
   deleteConversation,
   getBillingStatus,
   createCheckoutSession,
+  getMe,
 } from "../api";
 import type { BillingStatus } from "../api";
 import type { Document, Chunk, Message, KnowledgeBase } from "../types";
@@ -46,6 +47,7 @@ interface ConfirmDialogState {
 interface ChatContextValue {
   // User
   user: { name: string; email: string };
+  isAdmin: boolean;
   logout: () => void;
 
   // Mobile chat sidebar
@@ -78,6 +80,7 @@ interface ChatContextValue {
   submitMessage: () => Promise<void>;
   handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   clearConversation: () => void;
+  confirmClearConversation: () => void;
 
   // Upload / drag
   uploading: boolean;
@@ -200,6 +203,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const email = localStorage.getItem("user-email") ?? "";
   const user = { name: nameFromEmail(email) || "Utilisateur", email };
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    getMe().then((profile) => setIsAdmin(!!profile.is_admin)).catch(() => {});
+  }, []);
 
   // Data
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -666,9 +674,20 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     resetChat(null);
   }
 
+  function confirmClearConversation() {
+    showConfirm({
+      title: "Clear conversation",
+      description: "This will permanently delete the messages in this conversation. This action cannot be undone.",
+      confirmLabel: "Clear conversation",
+      variant: "danger",
+      onConfirm: clearConversation,
+    });
+  }
+
   // ── Tab / chunks ─────────────────────────────────────────────────────
 
   async function switchTab(next: "chat" | "chunks") {
+    if (next === "chunks" && !isAdmin) return;
     setTab(next);
     if (next === "chunks" && chunks.length === 0 && selectedDoc) {
       setChunksLoading(true);
@@ -776,6 +795,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const value: ChatContextValue = {
     user,
+    isAdmin,
     logout,
     documents,
     knowledgeBases,
@@ -798,6 +818,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     submitMessage,
     handleSubmit,
     clearConversation,
+    confirmClearConversation,
     uploading,
     isDragging,
     handleDragEnter,

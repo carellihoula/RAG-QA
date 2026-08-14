@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense, lazy } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import { ChatProvider, useChatContext } from "./context/ChatContext";
 import type { NavItem } from "@/components/AppSidebar";
 import { LayoutDashboard, MessageSquare } from "lucide-react";
@@ -17,8 +18,13 @@ import { ChatSidebar } from "@/components/chat/sidebar/ChatSidebar";
 import { WelcomeScreen } from "@/components/chat/WelcomeScreen";
 import { ChatHeader } from "@/components/chat/ChatHeader";
 import { ChatPanel } from "@/components/chat/ChatPanel";
-import { ChunksPanel } from "@/components/chat/ChunksPanel";
 import { addDocToKb, verifyCheckoutSession } from "./api";
+
+// Admin-only debug view — code-split so its bundle only loads if an admin
+// actually opens the "Chunks" tab.
+const ChunksPanel = lazy(() =>
+  import("@/components/chat/ChunksPanel").then((m) => ({ default: m.ChunksPanel })),
+);
 
 export default function ChatApp() {
   return (
@@ -60,6 +66,7 @@ function ChatAppInner() {
     tab,
     selectedDoc,
     selectedKb,
+    isAdmin,
     fetchDocuments,
     fetchKnowledgeBases,
     fetchKbDocs,
@@ -84,7 +91,17 @@ function ChatAppInner() {
             <>
               <ChatHeader />
               {(tab === "chat" || selectedKb) && <ChatPanel />}
-              {tab === "chunks" && selectedDoc && <ChunksPanel />}
+              {tab === "chunks" && selectedDoc && isAdmin && (
+                <Suspense
+                  fallback={
+                    <div className="flex-1 flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/40" />
+                    </div>
+                  }
+                >
+                  <ChunksPanel />
+                </Suspense>
+              )}
             </>
           )}
         </main>

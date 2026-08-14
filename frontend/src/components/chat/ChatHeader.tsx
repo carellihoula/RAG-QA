@@ -1,4 +1,4 @@
-import { FileText, Library, RotateCcw, PanelLeft } from "lucide-react";
+import { FileText, Library, Eraser, PanelLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -12,9 +12,10 @@ export function ChatHeader() {
     tab,
     sessionId,
     switchTab,
-    clearConversation,
+    confirmClearConversation,
     chatSidebarOpen,
     setChatSidebarOpen,
+    isAdmin,
   } = useChatContext();
 
   return (
@@ -88,7 +89,7 @@ export function ChatHeader() {
           )}
         </div>
 
-        {selectedDoc && (
+        {selectedDoc && isAdmin && (
           <Tabs
             value={tab}
             onValueChange={(v) => switchTab(v as "chat" | "chunks")}
@@ -106,11 +107,11 @@ export function ChatHeader() {
 
         {tab === "chat" && sessionId && (
           <button
-            className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
+            className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors flex-shrink-0"
             title="Clear conversation"
-            onClick={clearConversation}
+            onClick={confirmClearConversation}
           >
-            <RotateCcw className="h-3.5 w-3.5" />
+            <Eraser className="h-3.5 w-3.5" />
           </button>
         )}
       </header>
