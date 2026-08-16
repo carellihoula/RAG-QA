@@ -34,7 +34,7 @@ const features = [
     icon: Globe,
     title: "Multiple sources",
     description:
-      "PDF (with image-aware, multimodal parsing), Excel/CSV, web pages, and Wikipedia articles — all in one workspace.",
+      "PDF (with image-aware, multimodal parsing), Excel/CSV, web pages, and Wikipedia articles - all in one workspace.",
     color: "text-emerald-500 bg-emerald-500/10",
   },
   {
@@ -79,7 +79,7 @@ const steps = [
     step: "01",
     icon: Upload,
     title: "Add a source",
-    desc: "Drag & drop a file or paste a URL. PDFs, spreadsheets, web pages, Wikipedia articles — indexed in seconds.",
+    desc: "Drag & drop a file or paste a URL. PDFs, spreadsheets, web pages, Wikipedia articles - indexed in seconds.",
   },
   {
     step: "02",
@@ -319,7 +319,7 @@ export default function HomePage() {
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed mb-6 max-w-md">
               Add PDFs, spreadsheets, web pages, or Wikipedia articles. Ask
-              questions in plain English and get accurate answers — with exact
+              questions in plain English and get accurate answers - with exact
               source citations.
             </p>
 
@@ -595,7 +595,7 @@ export default function HomePage() {
             Ready to chat with your sources?
           </h2>
           <p className="text-muted-foreground mb-8 text-sm leading-relaxed max-w-sm mx-auto">
-            Start for free — no credit card required. Your first source is
+            Start for free - no credit card required. Your first source is
             indexed in under 10 seconds.
           </p>
           <Button
@@ -621,7 +621,8 @@ export default function HomePage() {
             <span className="text-sm font-semibold">RAG Q&amp;A</span>
           </button>
           <p className="text-xs text-muted-foreground">
-            Built with FastAPI · LangChain · PGVector · OpenAI · React · TypeScript
+            Built with FastAPI · LangChain · PGVector · OpenAI · React ·
+            TypeScript
           </p>
           <ModeToggle />
         </div>

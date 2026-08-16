@@ -26,3 +26,12 @@ frontend/Caddyfile.local
 .vscode/
 .idea/
 .DS_Store
+
+# Scratch / one-off scripts, not part of the running app
+backend/test_pgvector.py
+backend/scripts/migrate_metadata_to_db.py
+
+# Design prototype exports (unused by the app — rag/ and rag_design/ are duplicates)
+rag.zip
+rag/
+rag_design/
