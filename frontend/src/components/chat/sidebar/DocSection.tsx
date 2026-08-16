@@ -75,6 +75,7 @@ export function DocSection() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
+                data-tour="add-source"
                 variant="ghost"
                 size="icon"
                 onClick={() => !quotaReached && setShowAddSource(true)}
@@ -215,8 +216,12 @@ export function DocSection() {
                   </div>
                 </div>
 
-                {/* Actions: add to KB + delete — always visible on touch, hover-reveal on desktop */}
-                <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0 mt-0.5 transition-all">
+                {/* Actions: add to KB + delete — always visible on touch and for the
+                    active conversation, hover-reveal for everything else on desktop */}
+                <div className={cn(
+                  "flex items-center gap-0.5 flex-shrink-0 mt-0.5 transition-all",
+                  isActive ? "opacity-100" : "opacity-100 md:opacity-0 md:group-hover:opacity-100",
+                )}>
                   {knowledgeBases.length > 0 && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -224,6 +229,7 @@ export function DocSection() {
                           asChild
                           variant="ghost"
                           size="icon"
+                          data-tour="doc-link-kb"
                           className="h-5 w-5 p-0.5 text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10"
                         >
                           <span

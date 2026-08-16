@@ -18,6 +18,7 @@ import { ChatSidebar } from "@/components/chat/sidebar/ChatSidebar";
 import { WelcomeScreen } from "@/components/chat/WelcomeScreen";
 import { ChatHeader } from "@/components/chat/ChatHeader";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { OnboardingTour } from "@/components/OnboardingTour";
 import { addDocToKb, verifyCheckoutSession } from "./api";
 
 // Admin-only debug view — code-split so its bundle only loads if an admin
@@ -75,6 +76,7 @@ function ChatAppInner() {
 
   return (
     <SidebarLayout sidebarProps={{ user, navItems: APP_NAV, onLogout: logout, quotaRefresh }}>
+      <OnboardingTour />
       <div
         className="flex h-full overflow-hidden relative"
         onDragEnter={handleDragEnter}

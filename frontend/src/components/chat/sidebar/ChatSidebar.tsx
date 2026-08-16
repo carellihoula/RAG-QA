@@ -1,4 +1,4 @@
-import { Sparkles, X, Library } from "lucide-react";
+import { Sparkles, X, Library, HelpCircle } from "lucide-react";
 import { useChatContext } from "@/context/ChatContext";
 import { KbSection } from "./KbSection";
 import { DocSection } from "./DocSection";
@@ -27,6 +27,13 @@ function SidebarContent() {
         <span className="text-[10px] text-sidebar-muted-foreground/40">
           {knowledgeBases.length} KB · {documents.length} docs
         </span>
+        <button
+          onClick={() => window.dispatchEvent(new Event('onboarding:start'))}
+          title="Take a tour"
+          className="h-6 w-6 rounded-md flex items-center justify-center text-sidebar-muted-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent transition-colors flex-shrink-0"
+        >
+          <HelpCircle className="h-4 w-4" />
+        </button>
       </div>
 
       <KbSection />
@@ -80,12 +87,21 @@ export function ChatSidebar() {
         >
           <div className="flex items-center justify-between px-3 pt-3 pb-1 flex-shrink-0">
             <span className="text-xs font-semibold text-sidebar-muted-foreground uppercase tracking-wider">Sources</span>
-            <button
-              onClick={() => setChatSidebarOpen(false)}
-              className="h-7 w-7 rounded-lg flex items-center justify-center text-sidebar-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={() => window.dispatchEvent(new Event('onboarding:start'))}
+                title="Take a tour"
+                className="h-7 w-7 rounded-lg flex items-center justify-center text-sidebar-muted-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent transition-colors"
+              >
+                <HelpCircle className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => setChatSidebarOpen(false)}
+                className="h-7 w-7 rounded-lg flex items-center justify-center text-sidebar-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
           <SidebarContent />
         </aside>

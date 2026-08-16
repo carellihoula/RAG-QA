@@ -107,6 +107,7 @@ export function ChatHeader() {
 
         {tab === "chat" && sessionId && (
           <button
+            data-tour="clear-conversation"
             className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors flex-shrink-0"
             title="Clear conversation"
             onClick={confirmClearConversation}

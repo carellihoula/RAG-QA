@@ -70,6 +70,7 @@ export function KbSection() {
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
+              data-tour="add-kb"
               variant="ghost"
               size="icon"
               onClick={() => knowledgeBases.length < MAX_KBS && setIsCreatingKb((v) => !v)}
@@ -160,6 +161,7 @@ export function KbSection() {
               <ContextMenu>
                 <ContextMenuTrigger asChild>
                   <div
+                    data-tour={knowledgeBases[0]?.id === kb.id ? "kb-row" : undefined}
                     className={cn(
                       "group flex items-center gap-1 px-1 py-2 rounded-lg transition-all duration-150 cursor-pointer",
                       isActive
@@ -309,6 +311,7 @@ export function KbSection() {
                             )}
                           </button>
                           <Button
+                            data-tour="kb-unlink-doc"
                             variant="ghost"
                             size="icon"
                             onClick={() => confirmRemoveFromKb(kb, doc)}
