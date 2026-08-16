@@ -106,6 +106,14 @@ def _load_wikipedia(query: str) -> tuple[list[LCDocument], str, str]:
     import wikipedia as wp
     from urllib.parse import unquote
 
+    # Wikimedia now rejects requests without a descriptive User-Agent (403,
+    # plain-text body) — the `wikipedia` package defaults to the generic
+    # "python-requests/x.y" one, which gets blocked. Without this, every
+    # lookup fails with a confusing "Expecting value: line 1 column 1"
+    # (json.loads choking on the non-JSON error body), unrelated to the
+    # search term itself.
+    wp.set_user_agent('RAG-QA/1.0 (+https://ragqa.duckdns.org; contact: carellihoula10@gmail.com)')
+
     # Accept full Wikipedia URL or plain search query
     search_term = query.strip()
     if 'wikipedia.org/wiki/' in search_term:

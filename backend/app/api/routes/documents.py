@@ -45,12 +45,17 @@ async def _index_file_task(doc_id: str, file_path: Path, filename: str, user_id:
             page_count=response.page_count, chunk_count=response.chunk_count,
             source_type=source_type, status='ready', s3_key=s3_key,
         )
+        # Quota is charged on a successful index, not on the initial request —
+        # a failed upload shouldn't cost the user their upload allowance.
+        billing_service.log_upload(user_id)
     except Exception as e:
         file_path.unlink(missing_ok=True)
         doc_service.update_after_indexing(doc_id, status='error', error=str(e))
 
 
-async def _index_url_task(doc_id: str, url: str, source_type_input: str) -> None:
+async def _index_url_task(doc_id: str, url: str, source_type_input: str, user_id: str = "") -> None:
+    """Runs the real (billed) indexing. Used directly for plain URL imports,
+    and again — after user confirmation — to finalize a Wikipedia import."""
     try:
         docs, source_type, auto_title = await asyncio.to_thread(load_web, source_type_input, url)
         response = await rag_service.index_from_docs(doc_id, docs, auto_title, source_type=source_type)
@@ -65,6 +70,23 @@ async def _index_url_task(doc_id: str, url: str, source_type_input: str) -> None
             page_count=response.page_count, chunk_count=response.chunk_count,
             source_type=source_type, status='ready',
         )
+        billing_service.log_upload(user_id)
+    except Exception as e:
+        doc_service.update_after_indexing(doc_id, status='error', error=str(e))
+
+
+async def _resolve_wiki_task(doc_id: str, query: str) -> None:
+    """Wikipedia-only, first phase: resolves which article matches the query
+    (a cheap Wikipedia API call, no OpenAI cost) and stops at
+    'pending_confirmation' — the actual (billed) indexing only runs after the
+    user confirms via POST /{doc_id}/confirm, since search can silently land
+    on the wrong article for an imprecise query."""
+    try:
+        _docs, source_type, auto_title = await asyncio.to_thread(load_web, 'wikipedia', query)
+        doc_service.update_after_indexing(
+            doc_id, title=auto_title, filename=auto_title,
+            source_type=source_type, status='pending_confirmation',
+        )
     except Exception as e:
         doc_service.update_after_indexing(doc_id, status='error', error=str(e))
 
@@ -76,7 +98,6 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
 ):
     billing_service.check_quota(current_user)
-    billing_service.log_upload(str(current_user.id))
     doc_id, file_path = await doc_service.save_upload(file)
     now = datetime.now(tz=timezone.utc)
     doc_service.save_metadata(
@@ -98,7 +119,6 @@ async def import_from_url(
     current_user: User = Depends(get_current_user),
 ):
     billing_service.check_quota(current_user)
-    billing_service.log_upload(str(current_user.id))
     doc_id = str(uuid.uuid4())
     now = datetime.now(tz=timezone.utc)
     doc_service.save_metadata(
@@ -107,7 +127,11 @@ async def import_from_url(
         source_type=body.source_type, source_url=body.url,
         user_id=str(current_user.id),
     )
-    background_tasks.add_task(_index_url_task, doc_id, body.url, body.source_type)
+    if body.source_type == 'wikipedia':
+        # Resolve only — no indexing, no quota charge yet. See _resolve_wiki_task.
+        background_tasks.add_task(_resolve_wiki_task, doc_id, body.url)
+    else:
+        background_tasks.add_task(_index_url_task, doc_id, body.url, body.source_type, str(current_user.id))
     return DocumentResponse(
         doc_id=doc_id, filename=body.url, title=None,
         page_count=0, chunk_count=0, indexed_at=now, status='processing',
@@ -131,6 +155,31 @@ def get_document_status(doc_id: str, current_user: User = Depends(get_current_us
         'in_library': meta.get('in_library', True),
         'error': meta.get('error'),
     }
+
+
+@router.post('/{doc_id}/confirm', response_model=DocumentResponse, status_code=202)
+def confirm_document(
+    doc_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """Called once the user confirms a Wikipedia match is the right article —
+    only now does the real (billed) indexing run. Rejecting a wrong match
+    just deletes the document via DELETE /{doc_id}: nothing was ever indexed
+    for it, so there's nothing to undo and no quota was spent."""
+    doc_service.require_doc(doc_id, user_id=str(current_user.id))
+    meta = doc_service.load_metadata(doc_id)
+    if meta.get('status') != 'pending_confirmation':
+        raise HTTPException(status_code=409, detail='Document is not pending confirmation')
+
+    billing_service.check_quota(current_user)
+    query = meta.get('source_url') or meta.get('filename', '')
+    doc_service.update_after_indexing(doc_id, status='processing')
+    background_tasks.add_task(_index_url_task, doc_id, query, 'wikipedia', str(current_user.id))
+    return DocumentResponse(
+        doc_id=doc_id, filename=meta.get('filename', ''), title=meta.get('title'),
+        page_count=0, chunk_count=0, indexed_at=datetime.now(tz=timezone.utc), status='processing',
+    )
 
 
 @router.get('/', response_model=list[DocumentListItem])

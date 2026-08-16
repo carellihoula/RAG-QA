@@ -11,6 +11,9 @@ const SUGGESTIONS = [
   'Explain the most important concept',
 ]
 
+// Mirrors the backend's max_length on ChatRequest.question / KBChatRequest.question
+const MAX_QUESTION_LENGTH = 4000
+
 export function ChatPanel() {
   const {
     messages,
@@ -144,20 +147,31 @@ export function ChatPanel() {
               'focus-within:ring-2 focus-within:ring-blue-500/25 focus-within:border-blue-500/40 focus-within:shadow-md',
             )}
           >
-            <textarea
-              ref={textareaRef}
-              rows={1}
-              value={input}
-              onChange={(e) => { setInput(e.target.value); autoResize() }}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                selectedKb
-                  ? `Ask across ${selectedKb.name}…`
-                  : 'Ask a question…'
-              }
-              disabled={loading}
-              className="flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground/50 max-h-32 leading-relaxed py-0.5 disabled:opacity-50"
-            />
+            <div className="flex-1 flex flex-col min-w-0">
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={input}
+                onChange={(e) => { setInput(e.target.value); autoResize() }}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  selectedKb
+                    ? `Ask across ${selectedKb.name}…`
+                    : 'Ask a question…'
+                }
+                disabled={loading}
+                maxLength={MAX_QUESTION_LENGTH}
+                className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground/50 max-h-32 leading-relaxed py-0.5 disabled:opacity-50"
+              />
+              {input.length > MAX_QUESTION_LENGTH * 0.9 && (
+                <span className={cn(
+                  'self-end text-[10px] tabular-nums',
+                  input.length >= MAX_QUESTION_LENGTH ? 'text-red-500' : 'text-muted-foreground/50',
+                )}>
+                  {input.length}/{MAX_QUESTION_LENGTH}
+                </span>
+              )}
+            </div>
             <button
               type="submit"
               disabled={loading || !input.trim()}

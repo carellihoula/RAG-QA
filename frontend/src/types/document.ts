@@ -12,7 +12,7 @@ export interface Document {
   in_library?: boolean
   source_type?: SourceType
   source_url?: string
-  status?: 'processing' | 'ready' | 'error'
+  status?: 'processing' | 'pending_confirmation' | 'ready' | 'error'
   error?: string
 }
 

@@ -12,7 +12,7 @@ class DocumentResponse(BaseModel):
     page_count: int
     chunk_count: int
     indexed_at: datetime
-    status: Literal['processing', 'ready', 'error'] = 'ready'
+    status: Literal['processing', 'pending_confirmation', 'ready', 'error'] = 'ready'
     error: Optional[str] = None
 
 
@@ -32,7 +32,7 @@ class DocumentListItem(BaseModel):
     in_library: bool = True
     source_type: str = 'pdf'
     source_url: Optional[str] = None
-    status: Literal['processing', 'ready', 'error'] = 'ready'
+    status: Literal['processing', 'pending_confirmation', 'ready', 'error'] = 'ready'
 
 
 class DocumentUrlRequest(BaseModel):
@@ -44,7 +44,7 @@ class DocumentUrlRequest(BaseModel):
 class ChatRequest(BaseModel):
     """Body of the POST /chat request."""
     doc_id: str
-    question: str
+    question: str = Field(min_length=1, max_length=4000)
     session_id: Optional[str] = None
     conversation_id: Optional[str] = None
 
@@ -185,7 +185,7 @@ class KnowledgeBaseUpdate(BaseModel):
 
 class KBChatRequest(BaseModel):
     kb_id: str
-    question: str
+    question: str = Field(min_length=1, max_length=4000)
     session_id: Optional[str] = None
     conversation_id: Optional[str] = None
 

@@ -173,9 +173,9 @@ export async function uploadDocument(file: File): Promise<Document> {
     headers: authHeaders(),
     body: form,
   })
-  const doc = await handleResponse<Document>(res)
-  window.dispatchEvent(new Event('quota:refresh'))
-  return doc
+  // Quota is only charged once indexing actually succeeds — no refresh here,
+  // the caller dispatches it once polling confirms status === 'ready'.
+  return handleResponse<Document>(res)
 }
 
 export async function importFromUrl(data: {
@@ -187,9 +187,17 @@ export async function importFromUrl(data: {
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(data),
   })
-  const doc = await handleResponse<Document>(res)
-  window.dispatchEvent(new Event('quota:refresh'))
-  return doc
+  // Same as uploadDocument — quota is charged on successful indexing, not here.
+  return handleResponse<Document>(res)
+}
+
+/** Confirms a Wikipedia match is correct — this is what actually kicks off
+ * the real (billed) indexing, deferred until the user validates the matched
+ * article since search can silently land on the wrong page. Returns the doc
+ * with status 'processing' — poll getDocumentStatus() until 'ready'. */
+export async function confirmDocument(docId: string): Promise<Document> {
+  const res = await apiFetch(`${BASE}/documents/${docId}/confirm`, { method: 'POST' })
+  return handleResponse<Document>(res)
 }
 
 export async function deleteDocument(docId: string): Promise<null> {

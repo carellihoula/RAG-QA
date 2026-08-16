@@ -8,8 +8,9 @@ import { cn } from '@/lib/utils'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog'
-import { uploadDocument, importFromUrl, getDocumentStatus } from '../api'
+import { uploadDocument, importFromUrl, getDocumentStatus, confirmDocument, deleteDocument } from '../api'
 import { useChatContext } from '@/context/ChatContext'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import type { Document } from '../types'
 
 // ── Source type metadata ──────────────────────────────────────────────────────
@@ -58,17 +59,23 @@ export function AddSourceModal({ open, onOpenChange, onDocumentAdded, targetKbId
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading]   = useState(false)
   const [progress, setProgress]     = useState<{ done: number; total: number; phase: 'uploading' | 'indexing' } | null>(null)
+  const [pendingWikiDoc, setPendingWikiDoc] = useState<Document | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragCounter  = useRef(0)
+  // Radix's AlertDialog.Action closes the dialog on click too (not just
+  // Cancel), which would fire onOpenChange(false) right after onConfirm —
+  // this guards against that also triggering the reject/delete path.
+  const wikiConfirmedRef = useRef(false)
 
   // ── Helpers ─────────────────────────────────────────────────────────
 
-  async function pollUntilReady(docId: string): Promise<Document> {
+  async function pollUntilReady(docId: string, stopAtPending = false): Promise<Document> {
     for (let i = 0; i < 120; i++) {
       await new Promise(r => setTimeout(r, 2000))
       const s = await getDocumentStatus(docId)
       if (s.status === 'ready') return s
+      if (stopAtPending && s.status === 'pending_confirmation') return s
       if (s.status === 'error') throw new Error(s.error ?? 'Indexing failed')
     }
     throw new Error('Indexing timed out')
@@ -95,6 +102,7 @@ export function AddSourceModal({ open, onOpenChange, onDocumentAdded, targetKbId
         setProgress({ done: i, total: files.length, phase: 'indexing' })
         const doc = await pollUntilReady(partial.doc_id)
         onDocumentAdded(doc)
+        window.dispatchEvent(new Event('quota:refresh'))
         succeeded++
         setProgress({ done: succeeded, total: files.length, phase: 'indexing' })
       } catch (err) {
@@ -147,16 +155,63 @@ export function AddSourceModal({ open, onOpenChange, onDocumentAdded, targetKbId
     setUploading(true)
     try {
       const partial = await importFromUrl({ url: value, source_type: webType as 'url' | 'wikipedia' })
-      const doc = await pollUntilReady(partial.doc_id)
-      onDocumentAdded(doc)
-      toast.success(`"${doc.title ?? doc.filename}" imported`)
+      const isWiki = webType === 'wikipedia'
+      const doc = await pollUntilReady(partial.doc_id, isWiki)
+      if (isWiki) {
+        // Resolved which article matches, but nothing is indexed yet (no
+        // cost spent) — wait for the user to confirm it's the right one
+        // before running the real indexing and charging quota.
+        setPendingWikiDoc(doc)
+        setUploading(false)
+      } else {
+        onDocumentAdded(doc)
+        window.dispatchEvent(new Event('quota:refresh'))
+        toast.success(`"${doc.title ?? doc.filename}" imported`)
+        setUrlInput('')
+        setUploading(false)
+        onOpenChange(false)
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Import failed')
+      setUploading(false)
+    }
+  }
+
+  async function confirmWikiMatch() {
+    if (!pendingWikiDoc) return
+    wikiConfirmedRef.current = true
+    const doc = pendingWikiDoc
+    setPendingWikiDoc(null)
+    setUploading(true)
+    setProgress({ done: 0, total: 1, phase: 'indexing' })
+    try {
+      await confirmDocument(doc.doc_id)
+      const finalDoc = await pollUntilReady(doc.doc_id)
+      onDocumentAdded(finalDoc)
+      window.dispatchEvent(new Event('quota:refresh'))
+      toast.success(`"${finalDoc.title ?? finalDoc.filename}" imported`)
       setUrlInput('')
       onOpenChange(false)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Import failed')
+      const e = err as { status?: number; detail?: { code?: string; doc_limit?: number } }
+      const isQuota = e.status === 402 || e.detail?.code === 'quota_exceeded'
+      if (isQuota) showQuotaDialog(e.detail?.doc_limit ?? 10)
+      else toast.error(err instanceof Error ? err.message : 'Failed to confirm import')
     } finally {
       setUploading(false)
+      setProgress(null)
     }
+  }
+
+  async function rejectWikiMatch() {
+    if (!pendingWikiDoc) return
+    const doc = pendingWikiDoc
+    setPendingWikiDoc(null)
+    try {
+      await deleteDocument(doc.doc_id)
+    } catch { /* best-effort cleanup — nothing was indexed anyway */ }
+    toast.info('Discarded — try a more precise title.')
+    // Stay on the Wikipedia tab so the user can immediately retype.
   }
 
   const webMeta = WEB_TYPES[webType]
@@ -331,6 +386,21 @@ export function AddSourceModal({ open, onOpenChange, onDocumentAdded, targetKbId
           )}
         </div>
       </DialogContent>
+
+      <ConfirmDialog
+        open={!!pendingWikiDoc}
+        onOpenChange={(v) => {
+          if (v) return
+          if (wikiConfirmedRef.current) { wikiConfirmedRef.current = false; return }
+          rejectWikiMatch()
+        }}
+        variant="default"
+        title="Is this the right article?"
+        description={`Wikipedia matched: "${pendingWikiDoc?.title ?? pendingWikiDoc?.filename ?? ''}". Confirm to index it, or cancel to try a more precise title.`}
+        confirmLabel="Yes, index it"
+        cancelLabel="Not this one"
+        onConfirm={confirmWikiMatch}
+      />
     </Dialog>
   )
 }
