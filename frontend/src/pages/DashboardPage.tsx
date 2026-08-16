@@ -394,7 +394,8 @@ export default function DashboardPage() {
                             <p className="text-xs font-medium truncate text-foreground group-hover:text-primary transition-colors">
                               {doc.title ?? doc.filename}
                             </p>
-                            {(doc.page_count != null ||
+                            {currentUser?.is_admin &&
+                              (doc.page_count != null ||
                               doc.chunk_count != null) && (
                               <p className="text-[10px] text-muted-foreground">
                                 {doc.page_count != null
