@@ -1,4 +1,16 @@
 ragqa.duckdns.org {
+    # Security headers — applied to every response.
+    # script-src allows only the exact inline theme-flash-prevention script in
+    # index.html via its SHA-256 hash; update the hash if that script changes.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-6EAXwPBcx0k0MDwA7JnMAtpHSQQS0r7oWQ0C8UJfth8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        -Server
+    }
+
     handle /api/* {
         reverse_proxy backend:8000 {
             flush_interval -1

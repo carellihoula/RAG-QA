@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { FileText, Globe, BookOpen, Atom, Rss, Table, FileCode, Plus, Library, X, Search } from "lucide-react";
+import { FileText, Globe, BookOpen, Table, FileCode, Plus, Library, X, Search } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,23 +8,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useChatContext } from "@/context/ChatContext";
 import { KB_COLORS } from "@/components/chat/constants";
 
 const SOURCE_ICONS: Record<string, { icon: React.ElementType; color: string }> = {
   pdf:       { icon: FileText,  color: "text-red-400" },
-  docx:      { icon: FileText,  color: "text-blue-400" },
-  pptx:      { icon: FileText,  color: "text-orange-400" },
   xlsx:      { icon: Table,     color: "text-green-400" },
   csv:       { icon: Table,     color: "text-emerald-400" },
-  txt:       { icon: FileCode,  color: "text-slate-400" },
   md:        { icon: FileCode,  color: "text-slate-400" },
   html:      { icon: Globe,     color: "text-violet-400" },
   url:       { icon: Globe,     color: "text-blue-400" },
   wikipedia: { icon: BookOpen,  color: "text-slate-400" },
-  arxiv:     { icon: Atom,      color: "text-violet-400" },
-  rss:       { icon: Rss,       color: "text-amber-400" },
 };
 
 export function DocSection() {
@@ -36,7 +32,11 @@ export function DocSection() {
     setShowAddSource,
     confirmDeleteDoc,
     handleToggleDocInKb,
+    billing,
+    isAdmin,
   } = useChatContext();
+
+  const quotaReached = billing != null && billing.doc_limit !== -1 && billing.doc_count >= billing.doc_limit;
 
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -72,15 +72,27 @@ export function DocSection() {
               </span>
             )}
           </p>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowAddSource(true)}
-            className="h-5 w-5 rounded-md text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10"
-            title="Add source"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => !quotaReached && setShowAddSource(true)}
+                aria-disabled={quotaReached}
+                className={cn(
+                  "h-5 w-5 rounded-md",
+                  quotaReached
+                    ? "opacity-40 cursor-not-allowed text-sidebar-muted-foreground"
+                    : "text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10",
+                )}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {quotaReached ? "Quota reached" : "Add source"}
+            </TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Search input */}
@@ -111,14 +123,25 @@ export function DocSection() {
 
         {/* Add source — shown only when no docs */}
         {documents.length === 0 && (
-          <Button
-            variant="outline"
-            onClick={() => setShowAddSource(true)}
-            className="w-full h-auto gap-2 rounded-lg border-dashed border-sidebar-border bg-transparent py-2 text-xs font-medium text-sidebar-muted-foreground hover:border-blue-500/50 hover:text-blue-500 hover:bg-blue-500/5"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add source
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                onClick={() => !quotaReached && setShowAddSource(true)}
+                aria-disabled={quotaReached}
+                className={cn(
+                  "w-full h-auto gap-2 rounded-lg border-dashed border-sidebar-border bg-transparent py-2 text-xs font-medium",
+                  quotaReached
+                    ? "opacity-40 cursor-not-allowed text-sidebar-muted-foreground"
+                    : "text-sidebar-muted-foreground hover:border-blue-500/50 hover:text-blue-500 hover:bg-blue-500/5",
+                )}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {quotaReached ? "Quota reached" : "Add source"}
+              </Button>
+            </TooltipTrigger>
+            {quotaReached && <TooltipContent side="bottom">Quota reached</TooltipContent>}
+          </Tooltip>
         )}
       </div>
 
@@ -166,7 +189,7 @@ export function DocSection() {
                     {doc.title ?? doc.filename}
                   </span>
                   <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                    {(doc.page_count != null || doc.chunk_count != null) && (
+                    {isAdmin && (doc.page_count != null || doc.chunk_count != null) && (
                       <span className="text-[10px] text-sidebar-muted-foreground/50">
                         {doc.page_count != null ? `${doc.page_count}p` : ""}
                         {doc.page_count != null && doc.chunk_count != null ? " · " : ""}

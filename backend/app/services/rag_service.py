@@ -19,6 +19,18 @@ from app.config import settings
 from app.models.schemas import DocumentResponse, ChatResponse, SourceChunk
 
 
+def _preview(content: str, length: int = 300) -> str:
+    """Truncated snippet for the source citation UI. Tabular chunks (CSV/XLSX)
+    start with a 'Sheet:'/'Columns:' header — skip it so the preview shows
+    actual row data instead of being eaten up by a long column list."""
+    lines = content.splitlines()
+    idx = 0
+    while idx < len(lines) and (lines[idx].startswith('Sheet:') or lines[idx].startswith('Columns:')):
+        idx += 1
+    body = '\n'.join(lines[idx:]).strip()
+    return (body or content)[:length]
+
+
 class RAGService:
     """Indexes documents and answers questions via RAG (streaming + non-streaming)."""
 
@@ -249,7 +261,7 @@ class RAGService:
             page = doc.metadata.get("page", 0) + 1
             if page not in seen:
                 seen.add(page)
-                sources.append({"page": page, "content": doc.page_content[:300]})
+                sources.append({"page": page, "content": _preview(doc.page_content)})
         return sources
 
     # ── Chunks & session ──────────────────────────────────────────────

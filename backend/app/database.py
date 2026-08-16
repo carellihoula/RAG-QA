@@ -38,6 +38,7 @@ def init_db():
     from app.models.knowledge_base import KnowledgeBase, KBDocument  # noqa: F401
     from app.models.conversation import Conversation, ConversationMessage  # noqa: F401
     from app.models.document import Document  # noqa: F401
+    from app.models.upload_log import UploadLog  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _migrate_db()
 

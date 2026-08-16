@@ -117,7 +117,7 @@ export default function ResetPasswordPage() {
                     <Input
                       id="password" type={showPwd ? 'text' : 'password'} value={password}
                       onChange={e => setPassword(e.target.value)}
-                      placeholder="••••••••" required minLength={6}
+                      placeholder="••••••••" required minLength={8}
                       className="pl-9 pr-10" autoFocus
                     />
                     <button type="button" onClick={() => setShowPwd(v => !v)}

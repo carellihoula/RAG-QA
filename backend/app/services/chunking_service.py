@@ -16,7 +16,6 @@ def _splitter(chunk_size: int, chunk_overlap: int | None = None, extra_separator
 
 _PROSE      = _splitter(settings.chunk_size)
 _PARAGRAPH  = _splitter(settings.chunk_size, extra_separators=["\n\n\n"])
-_LARGE      = _splitter(2000, chunk_overlap=200)   # dense academic text
 
 
 class ChunkingService:
@@ -25,17 +24,12 @@ class ChunkingService:
     def chunk(self, docs: list[Document], source_type: str) -> list[Document]:
         strategies = {
             'pdf':       self._prose,
-            'docx':      self._prose,
-            'pptx':      self._slides,
-            'txt':       self._paragraph,
             'md':        self._markdown,
             'html':      self._markdown,
             'url':       self._markdown,
             'csv':       self._csv_rows,
             'xlsx':      self._sheet_rows,
             'wikipedia': self._wikipedia,
-            'arxiv':     self._arxiv,
-            'rss':       self._rss,
         }
         chunks = strategies.get(source_type, self._prose)(docs)
         self._clean(chunks)
@@ -48,20 +42,6 @@ class ChunkingService:
     def _prose(self, docs: list[Document]) -> list[Document]:
         """Fixed-size recursive splitting — good for PDF, DOCX."""
         return _PROSE.split_documents(docs)
-
-    def _paragraph(self, docs: list[Document]) -> list[Document]:
-        """Paragraph-first splitting — preserves web/HTML structure better."""
-        return _PARAGRAPH.split_documents(docs)
-
-    def _slides(self, docs: list[Document]) -> list[Document]:
-        """Each slide stays as one chunk; split only if a slide is unusually long."""
-        chunks = []
-        for doc in docs:
-            if len(doc.page_content) > settings.chunk_size:
-                chunks.extend(_PROSE.split_documents([doc]))
-            else:
-                chunks.append(doc)
-        return chunks
 
     def _markdown(self, docs: list[Document]) -> list[Document]:
         """Split on Markdown headers (#, ##, ###), then recursively split large sections."""
@@ -157,20 +137,6 @@ class ChunkingService:
         for doc in docs:
             if len(doc.page_content) > settings.chunk_size:
                 chunks.extend(_PARAGRAPH.split_documents([doc]))
-            else:
-                chunks.append(doc)
-        return chunks
-
-    def _arxiv(self, docs: list[Document]) -> list[Document]:
-        """arXiv papers arrive as abstract + metadata — keep as single chunk."""
-        return docs
-
-    def _rss(self, docs: list[Document]) -> list[Document]:
-        """Each RSS entry is one doc (title + summary) — split only if very long."""
-        chunks = []
-        for doc in docs:
-            if len(doc.page_content) > settings.chunk_size:
-                chunks.extend(_PROSE.split_documents([doc]))
             else:
                 chunks.append(doc)
         return chunks

@@ -61,6 +61,30 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
   )
 }
 
+// Shown instead of the code block while its closing ``` fence hasn't arrived
+// yet — avoids re-highlighting a still-changing block on every token (the
+// actual cause of the flicker), and matches how ChatGPT renders code blocks.
+// `!flex` is required: the message bubble wraps markdown output in a
+// `[&>*:last-child]:inline` container (keeps the streaming cursor on the same
+// line as the last bit of text) — while this placeholder is the last child,
+// that rule would flip it to `display: inline` and break the layout.
+function CodeGenerating() {
+  const widths = ['w-4/5', 'w-3/5', 'w-11/12', 'w-2/5']
+  return (
+    <div className="mb-2 last:mb-0 !flex flex-col gap-2 rounded-lg bg-zinc-900 px-3 py-3">
+      {widths.map((w, i) => (
+        <div
+          key={i}
+          className={cn(
+            'h-2.5 rounded-full bg-gradient-to-r from-zinc-800 via-zinc-600 to-zinc-800 bg-[length:200%_100%] animate-shimmer',
+            w,
+          )}
+        />
+      ))}
+    </div>
+  )
+}
+
 // ── Markdown rendering ────────────────────────────────────────────────────────
 // Compact overrides so LLM markdown output fits the small chat-bubble type scale
 // instead of the browser's default (large) prose spacing.
@@ -103,15 +127,33 @@ const MARKDOWN_COMPONENTS: Components = {
       </code>
     )
   },
-  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
 }
 
-function MarkdownContent({ content }: { content: string }) {
+function MarkdownContent({ content, streaming }: { content: string; streaming?: boolean }) {
+  // While streaming, the *last* fenced code block may still be growing (its
+  // closing ``` hasn't arrived) — highlight.js would re-tokenize it on every
+  // token, causing flicker. Detect that trailing open block and render a
+  // spinner in its place instead, same as ChatGPT: finished blocks (and all
+  // plain text) still render/stream normally, only the in-progress block waits.
+  const fenceCount = (content.match(/^\s*```/gm) ?? []).length
+  const hasOpenFence = !!streaming && fenceCount % 2 === 1
+  const totalCodeBlocks = Math.ceil(fenceCount / 2)
+  let codeBlockIndex = 0
+
+  const components: Components = {
+    ...MARKDOWN_COMPONENTS,
+    pre: ({ children }) => {
+      codeBlockIndex += 1
+      if (hasOpenFence && codeBlockIndex === totalCodeBlocks) return <CodeGenerating />
+      return <CodeBlock>{children}</CodeBlock>
+    },
+  }
+
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       rehypePlugins={[rehypeHighlight]}
-      components={MARKDOWN_COMPONENTS}
+      components={components}
     >
       {content}
     </ReactMarkdown>
@@ -264,7 +306,7 @@ export function MessageBubble({ msg, docTitle }: MessageBubbleProps) {
       <div className="max-w-[85%] flex flex-col gap-1">
         <div className="text-sm leading-relaxed pt-1">
           <div className="contents [&>*:last-child]:inline">
-            <MarkdownContent content={msg.content} />
+            <MarkdownContent content={msg.content} streaming={msg.streaming} />
           </div>
           {msg.streaming && (
             <span className="inline-block w-[2px] h-[0.85em] rounded-full bg-foreground align-text-bottom ml-[2px] animate-cursor-blink" />

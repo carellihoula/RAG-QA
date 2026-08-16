@@ -1,5 +1,5 @@
 import uuid
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Literal, Optional
 from datetime import datetime
 
@@ -17,8 +17,7 @@ class DocumentResponse(BaseModel):
 
 
 SourceType = Literal[
-    'pdf', 'docx', 'pptx', 'xlsx', 'csv', 'txt', 'md', 'html',
-    'url', 'wikipedia', 'arxiv', 'rss',
+    'pdf', 'xlsx', 'csv', 'md', 'html', 'url', 'wikipedia',
 ]
 
 
@@ -39,7 +38,7 @@ class DocumentListItem(BaseModel):
 class DocumentUrlRequest(BaseModel):
     """Body of POST /documents/from-url."""
     url: str
-    source_type: Literal['url', 'wikipedia', 'arxiv', 'rss']
+    source_type: Literal['url', 'wikipedia']
 
 
 class ChatRequest(BaseModel):
@@ -69,13 +68,12 @@ class ChunkItem(BaseModel):
 
 
 class UserCreate(BaseModel):
-    email: str
-    password: str
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
 
 
 class Token(BaseModel):
-    access_token: str
-    refresh_token: str
+    """Tokens are set as httpOnly cookies, not returned in the body."""
     token_type: str = "bearer"
 
 
@@ -122,17 +120,17 @@ class RefreshRequest(BaseModel):
 
 
 class ForgotPasswordRequest(BaseModel):
-    email: str
+    email: EmailStr
 
 
 class ResetPasswordRequest(BaseModel):
     token: str
-    new_password: str
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class ChangePasswordRequest(BaseModel):
     old_password: str
-    new_password: str
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class UpdateProfileRequest(BaseModel):

@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import {
-  FileText, FileCode, Globe, BookOpen, Atom, Rss,
+  FileText, FileCode, Globe, BookOpen,
   Table, Upload, Link, Loader2, AlertCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -25,20 +25,16 @@ interface SourceMeta {
 }
 
 const FILE_TYPES: Record<string, SourceMeta> = {
-  pdf:  { label: 'PDF',        icon: FileText, color: 'text-red-500 bg-red-500/10',     accept: '.pdf' },
-  docx: { label: 'Word',       icon: FileText, color: 'text-blue-500 bg-blue-500/10',   accept: '.docx,.doc' },
-  pptx: { label: 'PowerPoint', icon: FileText, color: 'text-orange-500 bg-orange-500/10', accept: '.pptx,.ppt' },
-  xlsx: { label: 'Excel',      icon: Table,    color: 'text-green-500 bg-green-500/10', accept: '.xlsx,.xls' },
-  csv:  { label: 'CSV',        icon: Table,    color: 'text-emerald-500 bg-emerald-500/10', accept: '.csv' },
-  txt:  { label: 'Text/MD',    icon: FileCode, color: 'text-slate-500 bg-slate-500/10', accept: '.txt,.md,.markdown' },
-  html: { label: 'HTML',       icon: Globe,    color: 'text-violet-500 bg-violet-500/10', accept: '.html,.htm' },
+  pdf:  { label: 'PDF',   icon: FileText, color: 'text-red-500 bg-red-500/10',     accept: '.pdf' },
+  xlsx: { label: 'Excel', icon: Table,    color: 'text-green-500 bg-green-500/10', accept: '.xlsx,.ods' },
+  csv:  { label: 'CSV',   icon: Table,    color: 'text-emerald-500 bg-emerald-500/10', accept: '.csv' },
+  md:   { label: 'Markdown', icon: FileCode, color: 'text-slate-500 bg-slate-500/10', accept: '.md,.markdown' },
+  html: { label: 'HTML',  icon: Globe,    color: 'text-violet-500 bg-violet-500/10', accept: '.html,.htm' },
 }
 
 const WEB_TYPES: Record<string, SourceMeta> = {
   url:       { label: 'Web page',  icon: Globe,    color: 'text-blue-500 bg-blue-500/10',    placeholder: 'https://example.com/article', hint: 'Any public web page will be scraped and indexed', inputLabel: 'URL' },
   wikipedia: { label: 'Wikipedia', icon: BookOpen, color: 'text-slate-500 bg-slate-500/10',  placeholder: 'Artificial intelligence', hint: 'Enter a Wikipedia article title or search query', inputLabel: 'Article title' },
-  arxiv:     { label: 'arXiv',     icon: Atom,     color: 'text-violet-500 bg-violet-500/10', placeholder: '2401.12345 or https://arxiv.org/abs/...', hint: 'Enter a paper ID or arXiv URL', inputLabel: 'Paper ID or URL' },
-  rss:       { label: 'RSS Feed',  icon: Rss,      color: 'text-amber-500 bg-amber-500/10',  placeholder: 'https://example.com/feed.xml', hint: 'Last 30 entries will be indexed', inputLabel: 'Feed URL' },
 }
 
 const ALL_ACCEPT = Object.values(FILE_TYPES).map(t => t.accept).join(',')
@@ -150,7 +146,7 @@ export function AddSourceModal({ open, onOpenChange, onDocumentAdded, targetKbId
     if (!value || uploading) return
     setUploading(true)
     try {
-      const partial = await importFromUrl({ url: value, source_type: webType as 'url' | 'wikipedia' | 'arxiv' | 'rss' })
+      const partial = await importFromUrl({ url: value, source_type: webType as 'url' | 'wikipedia' })
       const doc = await pollUntilReady(partial.doc_id)
       onDocumentAdded(doc)
       toast.success(`"${doc.title ?? doc.filename}" imported`)

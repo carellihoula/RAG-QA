@@ -1,5 +1,7 @@
 import boto3
+import re
 from pathlib import Path
+from urllib.parse import quote
 from app.config import settings
 
 
@@ -10,6 +12,15 @@ def _client():
         aws_access_key_id=settings.aws_access_key_id,
         aws_secret_access_key=settings.aws_secret_access_key,
     )
+
+
+def _content_disposition(filename: str) -> str:
+    """RFC 6266-compliant header — percent-encodes the UTF-8 filename instead
+    of interpolating it raw, so a name containing `"` or CR/LF can't break out
+    of the quoted attribute or inject extra headers."""
+    ascii_fallback = re.sub(r'[^\x20-\x7e]|["\\]', '_', filename) or "download"
+    encoded = quote(filename, safe='')
+    return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded}"
 
 
 def upload_file(file_path: Path, doc_id: str, filename: str, user_id: str = "") -> str:
@@ -24,12 +35,13 @@ def upload_file(file_path: Path, doc_id: str, filename: str, user_id: str = "") 
         settings.s3_bucket,
         key,
         ExtraArgs={
-            "ContentDisposition": f'attachment; filename="{filename}"',
+            "ContentDisposition": _content_disposition(filename),
             # S3 object metadata — who uploaded it and when
             "Metadata": {
                 "user_id": user_id,
                 "doc_id": doc_id,
-                "original_filename": filename,
+                # S3 metadata values must be ASCII with no control characters
+                "original_filename": re.sub(r'[^\x20-\x7e]', '_', filename),
             },
         },
     )

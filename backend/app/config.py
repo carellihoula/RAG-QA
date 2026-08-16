@@ -62,8 +62,11 @@ class Settings(BaseSettings):
     stripe_pro_price_id: str = ""   # Price ID from Stripe dashboard (price_xxx)
 
     # Plan limits
-    free_doc_limit: int = 5
+    free_doc_limit: int = 10
     pro_doc_limit: int = 100
+
+    # Upload / fetch limits — shared cap for file uploads and URL-import responses
+    max_upload_mb: int = 50
 
     # CORS — add your production domain via ALLOWED_ORIGINS env var (comma-separated)
     allowed_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
@@ -73,6 +76,12 @@ class Settings(BaseSettings):
     def cors_origins(self) -> list[str]:
         extra = [o.strip() for o in self.extra_origins.split(",") if o.strip()]
         return self.allowed_origins + extra
+
+    @property
+    def cookie_secure(self) -> bool:
+        """Only mark auth cookies Secure when actually served over HTTPS —
+        browsers silently drop Secure cookies over plain HTTP (local dev)."""
+        return self.frontend_url.startswith("https")
 
     class Config:
         env_file = ".env"

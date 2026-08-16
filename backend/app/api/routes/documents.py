@@ -76,6 +76,7 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
 ):
     billing_service.check_quota(current_user)
+    billing_service.log_upload(str(current_user.id))
     doc_id, file_path = await doc_service.save_upload(file)
     now = datetime.now(tz=timezone.utc)
     doc_service.save_metadata(
@@ -97,6 +98,7 @@ async def import_from_url(
     current_user: User = Depends(get_current_user),
 ):
     billing_service.check_quota(current_user)
+    billing_service.log_upload(str(current_user.id))
     doc_id = str(uuid.uuid4())
     now = datetime.now(tz=timezone.utc)
     doc_service.save_metadata(

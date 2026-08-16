@@ -7,25 +7,19 @@ export type { Document, Chunk, Source, ChatResponse, AuthResponse, StreamEvent, 
 
 const BASE = '/api/v1'
 
-// ── Auth storage ──────────────────────────────────────────────────────────────
+// ── Auth state ────────────────────────────────────────────────────────────────
+// Tokens live only in httpOnly cookies set by the backend — never readable by
+// JS, so an XSS can't exfiltrate them from localStorage. This flag is a
+// non-sensitive UX hint only ("was the user logged in last time we checked");
+// every real authorization decision is re-checked server-side via the cookie.
 
-function getToken()   { return localStorage.getItem('token') }
-function getRefresh() { return localStorage.getItem('refresh_token') }
+function markLoggedIn()  { localStorage.setItem('logged_in', '1') }
+function clearAuthFlag() { localStorage.removeItem('logged_in'); localStorage.removeItem('user-email') }
+export function isLoggedIn() { return localStorage.getItem('logged_in') === '1' }
 
-function saveTokens(access: string, refresh: string) {
-  localStorage.setItem('token', access)
-  localStorage.setItem('refresh_token', refresh)
-}
-
-function clearTokens() {
-  localStorage.removeItem('token')
-  localStorage.removeItem('refresh_token')
-  localStorage.removeItem('user-email')
-}
-
+/** Kept for call-site compatibility — no longer injects a bearer token. */
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const token = getToken()
-  return token ? { Authorization: `Bearer ${token}`, ...extra } : { ...extra }
+  return { ...extra }
 }
 
 // ── Auto-refresh on 401 ───────────────────────────────────────────────────────
@@ -33,24 +27,12 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
 let _refreshPromise: Promise<void> | null = null
 
 async function _doRefresh(): Promise<void> {
-  const rt = getRefresh()
-  if (!rt) {
-    clearTokens()
-    window.location.href = '/login'
-    throw new Error('Session expired')
-  }
-  const res = await fetch(`${BASE}/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: rt }),
-  })
+  const res = await fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
   if (!res.ok) {
-    clearTokens()
+    clearAuthFlag()
     window.location.href = '/login'
     throw new Error('Session expired')
   }
-  const data: AuthResponse = await res.json()
-  saveTokens(data.access_token, data.refresh_token)
 }
 
 /**
@@ -58,7 +40,7 @@ async function _doRefresh(): Promise<void> {
  * Multiple concurrent 401s share a single refresh call (promise deduplication).
  */
 async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const res = await fetch(url, options)
+  const res = await fetch(url, { ...options, credentials: 'include' })
   if (res.status !== 401) return res
 
   // Deduplicate concurrent refresh calls
@@ -67,11 +49,8 @@ async function apiFetch(url: string, options: RequestInit = {}): Promise<Respons
   }
   await _refreshPromise
 
-  // Retry with new token
-  return fetch(url, {
-    ...options,
-    headers: { ...options.headers, Authorization: `Bearer ${getToken()}` },
-  })
+  // Retry — the refreshed cookie is sent automatically
+  return fetch(url, { ...options, credentials: 'include' })
 }
 
 // ── Generic response handler ──────────────────────────────────────────────────
@@ -101,17 +80,19 @@ async function handleResponse<T>(res: Response): Promise<T> {
 export async function login(email: string, password: string): Promise<AuthResponse> {
   const res = await fetch(`${BASE}/auth/login`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   })
   const data = await handleResponse<AuthResponse>(res)
-  saveTokens(data.access_token, data.refresh_token)
+  markLoggedIn()
   return data
 }
 
 export async function register(email: string, password: string): Promise<{ message: string }> {
   const res = await fetch(`${BASE}/auth/register`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   })
@@ -122,6 +103,7 @@ export async function register(email: string, password: string): Promise<{ messa
 export async function activateAccount(token: string): Promise<{ message: string }> {
   const res = await fetch(`${BASE}/auth/activate`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token }),
   })
@@ -130,9 +112,9 @@ export async function activateAccount(token: string): Promise<{ message: string 
 
 export async function logoutApi(): Promise<void> {
   try {
-    await apiFetch(`${BASE}/auth/logout`, { method: 'POST', headers: authHeaders() })
+    await apiFetch(`${BASE}/auth/logout`, { method: 'POST' })
   } catch { /* best-effort */ }
-  clearTokens()
+  clearAuthFlag()
 }
 
 export async function getMe(): Promise<UserProfile> {
@@ -198,7 +180,7 @@ export async function uploadDocument(file: File): Promise<Document> {
 
 export async function importFromUrl(data: {
   url: string
-  source_type: 'url' | 'wikipedia' | 'arxiv' | 'rss'
+  source_type: 'url' | 'wikipedia'
 }): Promise<Document> {
   const res = await apiFetch(`${BASE}/documents/from-url`, {
     method: 'POST',

@@ -135,7 +135,7 @@ export function RegisterForm({ onSwitchTab }: Props) {
             id="reg-password" type={showPwd ? 'text' : 'password'} value={password}
             onChange={e => setPassword(e.target.value)}
             placeholder="••••••••"
-            required minLength={6}
+            required minLength={8}
             className="pl-9 pr-10"
           />
           <button

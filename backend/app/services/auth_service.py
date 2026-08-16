@@ -6,7 +6,7 @@ from typing import Optional
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -15,7 +15,33 @@ from app.database import get_db
 from app.models.user import User
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+# auto_error=False: the header is optional now that auth primarily flows
+# through httpOnly cookies — get_current_user checks the cookie first.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+ACCESS_COOKIE = "access_token"
+REFRESH_COOKIE = "refresh_token"
+
+
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    """Sets both tokens as httpOnly cookies — never exposed to JS, so an XSS
+    can't exfiltrate them from localStorage. The refresh cookie is scoped to
+    the auth routes only, shrinking its exposure surface further."""
+    response.set_cookie(
+        ACCESS_COOKIE, access_token,
+        httponly=True, secure=settings.cookie_secure, samesite="lax",
+        max_age=settings.access_token_expire_minutes * 60, path="/",
+    )
+    response.set_cookie(
+        REFRESH_COOKIE, refresh_token,
+        httponly=True, secure=settings.cookie_secure, samesite="strict",
+        max_age=settings.refresh_token_expire_days * 24 * 3600, path="/api/v1/auth",
+    )
+
+
+def clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(ACCESS_COOKIE, path="/")
+    response.delete_cookie(REFRESH_COOKIE, path="/api/v1/auth")
 
 # ── Passwords ─────────────────────────────────────────────────────────────────
 
@@ -179,12 +205,19 @@ def update_profile(user: User, display_name: Optional[str], db: Session) -> User
 
 # ── Current user dependency ───────────────────────────────────────────────────
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+def get_current_user(
+    request: Request,
+    header_token: Optional[str] = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired token",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    token = request.cookies.get(ACCESS_COOKIE) or header_token
+    if not token:
+        raise credentials_exception
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         user_id = uuid.UUID(payload.get("sub"))

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useChatContext } from "@/context/ChatContext";
 import { KB_COLORS, MAX_KBS } from "@/components/chat/constants";
@@ -50,7 +51,10 @@ export function KbSection() {
     renameInputRef,
     setAddSourceKbId,
     setShowAddSource,
+    billing,
   } = useChatContext();
+
+  const quotaReached = billing != null && billing.doc_limit !== -1 && billing.doc_count >= billing.doc_limit;
 
   return (
     <div className="px-3 pt-3 pb-1 flex-shrink-0">
@@ -63,17 +67,27 @@ export function KbSection() {
             </span>
           )}
         </p>
-        {knowledgeBases.length < MAX_KBS && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsCreatingKb((v) => !v)}
-            className="h-5 w-5 rounded-md text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10"
-            title="New Knowledge Base"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
-        )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => knowledgeBases.length < MAX_KBS && setIsCreatingKb((v) => !v)}
+              aria-disabled={knowledgeBases.length >= MAX_KBS}
+              className={cn(
+                "h-5 w-5 rounded-md",
+                knowledgeBases.length >= MAX_KBS
+                  ? "opacity-40 cursor-not-allowed text-sidebar-muted-foreground"
+                  : "text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10",
+              )}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {knowledgeBases.length >= MAX_KBS ? "Quota reached" : "New Knowledge Base"}
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       {/* Create KB form */}
@@ -228,14 +242,16 @@ export function KbSection() {
                   </ContextMenuLabel>
                   <ContextMenuSeparator />
                   <ContextMenuItem
+                    disabled={quotaReached}
                     onClick={() => {
                       setAddSourceKbId(kb.id);
                       setShowAddSource(true);
                     }}
                     className="text-xs"
+                    title={quotaReached ? "Quota reached" : undefined}
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    Add source
+                    {quotaReached ? "Quota reached" : "Add source"}
                   </ContextMenuItem>
                   <ContextMenuItem
                     onClick={() => startRename(kb)}

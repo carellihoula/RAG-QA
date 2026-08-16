@@ -18,7 +18,9 @@ class DocumentService:
     # ── Upload ────────────────────────────────────────────────────────
 
     async def save_upload(self, file: UploadFile) -> tuple[str, Path]:
-        """Saves an uploaded file to disk. Returns (doc_id, path)."""
+        """Saves an uploaded file to disk, streamed in chunks so an oversized
+        upload is rejected early instead of being fully buffered first.
+        Returns (doc_id, path)."""
         ext = Path(file.filename or '').suffix.lower()
         if ext not in SUPPORTED_EXTENSIONS:
             supported = ', '.join(sorted(SUPPORTED_EXTENSIONS))
@@ -26,10 +28,23 @@ class DocumentService:
 
         doc_id = str(uuid.uuid4())
         file_path = settings.upload_dir / f"{doc_id}{ext}"
+        max_bytes = settings.max_upload_mb * 1024 * 1024
+        chunk_size = 1024 * 1024
 
-        async with aiofiles.open(file_path, 'wb') as f:
-            content = await file.read()
-            await f.write(content)
+        written = 0
+        try:
+            async with aiofiles.open(file_path, 'wb') as f:
+                while chunk := await file.read(chunk_size):
+                    written += len(chunk)
+                    if written > max_bytes:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=f"File exceeds the {settings.max_upload_mb}MB limit",
+                        )
+                    await f.write(chunk)
+        except HTTPException:
+            file_path.unlink(missing_ok=True)
+            raise
 
         return doc_id, file_path
 

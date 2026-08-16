@@ -107,18 +107,22 @@ export function QuotaBar({ isOpen, refreshTrigger }: Props) {
             )}
           </div>
           <span className="text-[10px] text-sidebar-muted-foreground">
-            {doc_count}<span className="text-sidebar-muted-foreground/50">/{doc_limit}</span>
+            {isPro ? (
+              'Unlimited'
+            ) : (
+              <>{doc_count}<span className="text-sidebar-muted-foreground/50">/{doc_limit}</span></>
+            )}
           </span>
         </div>
 
-        {/* Progress bar */}
+        {/* Progress bar — Pro shows a static full bar, no cap to visualize */}
         <div className="h-1.5 w-full rounded-full bg-sidebar-border overflow-hidden">
           <div
             className={cn(
               'h-full rounded-full transition-all duration-500',
               isPro ? 'bg-violet-500' : nearMax ? 'bg-orange-400' : 'bg-blue-500',
             )}
-            style={{ width: `${pct}%` }}
+            style={{ width: isPro ? '100%' : `${pct}%` }}
           />
         </div>
 

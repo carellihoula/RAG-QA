@@ -3,14 +3,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ModeToggle } from '@/components/ModeToggle'
 import { LoginForm } from '@/components/auth/LoginForm'
 import { RegisterForm } from '@/components/auth/RegisterForm'
+import { isLoggedIn } from '@/api'
 import { cn } from '@/lib/utils'
 import { ArrowLeft, Sparkles, Check, Globe, FileText, CheckCircle2 } from 'lucide-react'
 
 // ── Left-panel feature list ───────────────────────────────────────────────────
 
 const FEATURES = [
-  { icon: FileText, text: 'PDF, Word, Excel & PowerPoint' },
-  { icon: Globe,    text: 'Web pages, Wikipedia & ArXiv papers' },
+  { icon: FileText, text: 'PDF & Excel, with image-aware parsing' },
+  { icon: Globe,    text: 'Web pages & Wikipedia' },
   { icon: Sparkles, text: 'Hybrid BM25 + semantic search' },
   { icon: Check,    text: 'Cited answers with exact source references' },
 ]
@@ -26,7 +27,7 @@ export default function AuthPage() {
   const justActivated = searchParams.get('activated') === 'true'
 
   useEffect(() => {
-    if (localStorage.getItem('token')) navigate('/app', { replace: true })
+    if (isLoggedIn()) navigate('/app', { replace: true })
   }, [navigate])
 
   return (
@@ -89,7 +90,7 @@ export default function AuthPage() {
 
         {/* Footer */}
         <p className="relative text-white/25 text-xs">
-          Powered by GPT-4o-mini · FAISS · LangChain
+          Powered by GPT-4o-mini · PGVector · LangChain
         </p>
       </div>
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { MAX_DOCS, MAX_KBS } from "@/components/chat/constants";
+import { MAX_DOCS } from "@/components/chat/constants";
 import { QuotaDialog } from "@/components/QuotaDialog";
 import {
   listDocuments,
@@ -24,6 +24,7 @@ import {
   getBillingStatus,
   createCheckoutSession,
   getMe,
+  logoutApi,
 } from "../api";
 import type { BillingStatus } from "../api";
 import type { Document, Chunk, Message, KnowledgeBase } from "../types";
@@ -144,7 +145,6 @@ interface ChatContextValue {
 
   // Derived
   docUsagePct: number;
-  kbUsagePct: number;
   activeTarget: Document | KnowledgeBase | null;
 
   // Data fetchers (needed in ChatAppInner for AddSourceModal callback)
@@ -325,9 +325,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }
 
   function logout() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user-email");
-    navigate("/login", { replace: true });
+    logoutApi().finally(() => navigate("/login", { replace: true }));
   }
 
   // ── Upload / drag & drop ────────────────────────────────────────────
@@ -381,13 +379,22 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function handleDeleteDoc(docId: string) {
+    // Optimistic: remove from the list immediately, don't make the user
+    // wait on the S3/PGVector/DB round-trip to see it disappear.
+    const previous = documents;
+    setDocuments((docs) => docs.filter((d) => d.doc_id !== docId));
+    dropConvCache(_convCacheKey(docId)!);
+    if (selectedDoc?.doc_id === docId) selectDocument(null);
+    const stored = localStorage.getItem("last-selection");
+    if (stored && JSON.parse(stored)?.id === docId) {
+      localStorage.removeItem("last-selection");
+    }
+
     try {
       await deleteDocument(docId);
-      dropConvCache(_convCacheKey(docId)!);
-      if (selectedDoc?.doc_id === docId) selectDocument(null);
-      await fetchDocuments();
       toast.success("Document deleted");
     } catch (err) {
+      setDocuments(previous); // rollback — deletion didn't actually happen
       toast.error(err instanceof Error ? err.message : "Delete failed");
     }
   }
@@ -467,12 +474,21 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function handleDeleteKb(kbId: string) {
+    // Optimistic: remove from the list immediately, don't wait on the
+    // PGVector/DB round-trip to see it disappear.
+    const previous = knowledgeBases;
+    setKnowledgeBases((kbs) => kbs.filter((kb) => kb.id !== kbId));
+    if (selectedKb?.id === kbId) selectKb(null);
+    const stored = localStorage.getItem("last-selection");
+    if (stored && JSON.parse(stored)?.id === kbId) {
+      localStorage.removeItem("last-selection");
+    }
+
     try {
       await deleteKnowledgeBase(kbId);
-      if (selectedKb?.id === kbId) selectKb(null);
-      await fetchKnowledgeBases();
       toast.success("Knowledge Base deleted");
     } catch (err) {
+      setKnowledgeBases(previous); // rollback — deletion didn't actually happen
       toast.error(
         err instanceof Error ? err.message : "Failed to delete knowledge base",
       );
@@ -786,9 +802,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   // ── Derived values ────────────────────────────────────────────────────
 
-  const docLimit   = billing?.doc_limit ?? MAX_DOCS;
-  const docUsagePct = Math.min((documents.length / docLimit) * 100, 100);
-  const kbUsagePct = Math.min((knowledgeBases.length / MAX_KBS) * 100, 100);
+  const docLimit    = billing?.doc_limit ?? MAX_DOCS;
+  const docCount    = billing?.doc_count ?? documents.length;
+  const docUsagePct = docLimit > 0 ? Math.min((docCount / docLimit) * 100, 100) : 0;
   const activeTarget = selectedKb ?? selectedDoc;
 
   // ── Context value ─────────────────────────────────────────────────────
@@ -860,7 +876,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     showQuotaDialog,
     billing,
     docUsagePct,
-    kbUsagePct,
     activeTarget,
     chatSidebarOpen,
     setChatSidebarOpen,

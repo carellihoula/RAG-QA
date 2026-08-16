@@ -6,8 +6,12 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       network: host
+    # Bound to loopback only — reachable as localhost:8000 on this machine
+    # (for direct testing), but not from the public internet. Publishing on
+    # 0.0.0.0 let anyone bypass Caddy and spoof X-Forwarded-For to defeat
+    # the rate limiter (app/rate_limit.py trusts that header unconditionally).
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./backend/data:/app/data
     env_file:

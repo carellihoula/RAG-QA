@@ -2,7 +2,7 @@ import uuid
 import json
 import asyncio
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ from app.models.knowledge_base import KnowledgeBase
 from app.models.conversation import Conversation, ConversationMessage
 from app.models.schemas import ChatRequest, ChatResponse, KBChatRequest
 from app.api.routes.knowledge_bases import find_owned_kb, get_owned_kb
+from app.rate_limit import limiter
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 doc_service = DocumentService()
@@ -90,13 +91,16 @@ async def chat(request: ChatRequest, current_user: User = Depends(get_current_us
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"RAG error: {str(e)}")
+        print(f"[chat] RAG error for doc {request.doc_id}: {e}")
+        raise HTTPException(status_code=500, detail="Something went wrong answering your question. Please try again.")
     return response
 
 
 @router.post("/stream")
+@limiter.limit("20/minute")
 async def chat_stream(
-    request: ChatRequest,
+    request: Request,
+    body: ChatRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -107,9 +111,9 @@ async def chat_stream(
       data: {"type":"sources","sources":[...],"session_id":"...","conversation_id":"..."}
       data: [DONE]
     """
-    doc_service.require_doc(request.doc_id, user_id=str(current_user.id))
-    conv_id = request.conversation_id or request.session_id or str(uuid.uuid4())
-    cache_key = f"{request.doc_id}:{conv_id}"
+    doc_service.require_doc(body.doc_id, user_id=str(current_user.id))
+    conv_id = body.conversation_id or body.session_id or str(uuid.uuid4())
+    cache_key = f"{body.doc_id}:{conv_id}"
     user_id = str(current_user.id)
 
     # Restore in-memory history from DB when session cache is cold (e.g. after restart)
@@ -129,8 +133,8 @@ async def chat_stream(
                 {"role": m.role, "content": m.content} for m in past
             ])
 
-    doc_id = request.doc_id
-    question = request.question
+    doc_id = body.doc_id
+    question = body.question
 
     async def generate():
         # Phase 1 — retrieve relevant chunks (blocking, run in thread)
@@ -143,7 +147,8 @@ async def chat_stream(
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
             return
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': f'Retrieval error: {str(e)}'})}\n\n"
+            print(f"[chat] Retrieval error for doc {doc_id}: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Something went wrong retrieving context. Please try again.'})}\n\n"
             return
 
         # Phase 2 — stream LLM tokens, collect full answer
@@ -153,7 +158,8 @@ async def chat_stream(
                 full_answer += token
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': f'Stream error: {str(e)}'})}\n\n"
+            print(f"[chat] Stream error for doc {doc_id}: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Something went wrong generating the answer. Please try again.'})}\n\n"
             return
 
         # Phase 3 — persist Q&A pair, then send sources and close
@@ -179,23 +185,25 @@ def clear_session(
 # ── Knowledge Base streaming chat ─────────────────────────────────────────────
 
 @router.post("/kb/stream")
+@limiter.limit("20/minute")
 async def kb_chat_stream(
-    request: KBChatRequest,
+    request: Request,
+    body: KBChatRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Stream a RAG answer across all documents in a Knowledge Base."""
-    kb = find_owned_kb(db, uuid.UUID(request.kb_id), current_user.id)
+    kb = find_owned_kb(db, uuid.UUID(body.kb_id), current_user.id)
 
     doc_ids = [link.doc_id for link in kb.doc_links]
     if not doc_ids:
         raise HTTPException(status_code=400, detail="This knowledge base has no documents yet")
 
-    conv_id = request.conversation_id or request.session_id or str(uuid.uuid4())
-    cache_key = f"kb:{request.kb_id}:{conv_id}"
+    conv_id = body.conversation_id or body.session_id or str(uuid.uuid4())
+    cache_key = f"kb:{body.kb_id}:{conv_id}"
     user_id = str(current_user.id)
-    kb_id = request.kb_id
-    question = request.question
+    kb_id = body.kb_id
+    question = body.question
     system_prompt = kb.system_prompt
 
     # Restore in-memory history from DB when session cache is cold
@@ -225,7 +233,8 @@ async def kb_chat_stream(
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
             return
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': f'Retrieval error: {str(e)}'})}\n\n"
+            print(f"[chat] KB retrieval error for kb {kb_id}: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Something went wrong retrieving context. Please try again.'})}\n\n"
             return
 
         full_answer = ""
@@ -234,7 +243,8 @@ async def kb_chat_stream(
                 full_answer += token
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': f'Stream error: {str(e)}'})}\n\n"
+            print(f"[chat] KB stream error for kb {kb_id}: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Something went wrong generating the answer. Please try again.'})}\n\n"
             return
 
         sources = rag_service.extract_sources(docs)

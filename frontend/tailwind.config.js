@@ -59,10 +59,15 @@ export default {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0' },
         },
+        shimmer: {
+          '0%': { backgroundPosition: '150% 0' },
+          '100%': { backgroundPosition: '-50% 0' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.2s ease-out',
         'cursor-blink': 'cursor-blink 0.65s step-end infinite',
+        shimmer: 'shimmer 1.6s ease-in-out infinite',
       },
     },
   },

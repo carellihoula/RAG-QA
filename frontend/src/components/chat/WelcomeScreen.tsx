@@ -10,8 +10,10 @@ import { useChatContext } from "@/context/ChatContext";
 import { KB_COLORS } from "@/components/chat/constants";
 
 export function WelcomeScreen() {
-  const { uploading, knowledgeBases, selectKb, setShowAddSource } =
+  const { uploading, knowledgeBases, selectKb, setShowAddSource, billing } =
     useChatContext();
+
+  const quotaReached = billing != null && billing.doc_limit !== -1 && billing.doc_count >= billing.doc_limit;
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-4 sm:gap-6 px-4 sm:px-8 select-none">
@@ -81,11 +83,13 @@ export function WelcomeScreen() {
             </DropdownMenu>
           )}
           <button
-            onClick={() => setShowAddSource(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-medium transition-all shadow-lg shadow-blue-600/20"
+            onClick={() => !quotaReached && setShowAddSource(true)}
+            disabled={quotaReached}
+            title={quotaReached ? "Quota reached" : undefined}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-medium transition-all shadow-lg shadow-blue-600/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 disabled:hover:bg-blue-600"
           >
             <Upload className="h-4 w-4" />
-            Add a source
+            {quotaReached ? "Quota reached" : "Add a source"}
           </button>
         </div>
       )}

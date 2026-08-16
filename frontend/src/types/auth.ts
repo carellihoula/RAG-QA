@@ -1,6 +1,5 @@
 export interface AuthResponse {
-  access_token: string
-  refresh_token: string
+  /** Tokens are set as httpOnly cookies by the backend, not returned here. */
   token_type: string
 }
 

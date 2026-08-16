@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import stripe
 from fastapi import HTTPException
@@ -6,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models.document import Document
+from app.models.upload_log import UploadLog
 from app.models.user import User
 
 stripe.api_key = settings.stripe_secret_key
@@ -16,18 +17,38 @@ PLAN_LIMITS = {
     "pro":  settings.pro_doc_limit,
 }
 
+QUOTA_WINDOW = timedelta(hours=24)
 
-def get_doc_count(user_id: str) -> int:
-    """Count documents belonging to user_id (in_library or not)."""
+
+def log_upload(user_id: str) -> None:
+    """Records an accepted upload. Never deleted, even if the document
+    itself is later removed — this is what makes the quota a true rolling
+    24h rate limit rather than a count of currently-existing documents."""
     db = SessionLocal()
     try:
-        return db.query(Document).filter_by(user_id=user_id).count()
+        db.add(UploadLog(user_id=user_id))
+        db.commit()
+    finally:
+        db.close()
+
+
+def get_doc_count(user_id: str) -> int:
+    """Uploads in the last 24h (rolling window) — not a count of documents
+    currently in the account. Deleting a document does not free up quota."""
+    cutoff = datetime.now(timezone.utc) - QUOTA_WINDOW
+    db = SessionLocal()
+    try:
+        return (
+            db.query(UploadLog)
+            .filter(UploadLog.user_id == user_id, UploadLog.uploaded_at >= cutoff)
+            .count()
+        )
     finally:
         db.close()
 
 
 def check_quota(user: User) -> None:
-    """Raise 402 if user has reached their plan's document limit. Admins are unlimited."""
+    """Raise 402 if user has hit their plan's rolling 24h upload limit. Admins are unlimited."""
     if user.is_admin:
         return
     limit = PLAN_LIMITS.get(user.plan, settings.free_doc_limit)
@@ -40,7 +61,7 @@ def check_quota(user: User) -> None:
                 "doc_count": count,
                 "doc_limit": limit,
                 "plan": user.plan,
-                "message": f"Document limit reached ({count}/{limit}). Upgrade to Pro for more.",
+                "message": f"Upload limit reached ({count}/{limit} in the last 24h). Try again later or upgrade to Pro.",
             },
         )
 

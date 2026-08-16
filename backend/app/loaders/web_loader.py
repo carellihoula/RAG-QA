@@ -1,7 +1,47 @@
 """Loads web-based sources into LangChain Documents."""
-from langchain_core.documents import Document as LCDocument
+import ipaddress
+import socket
+from urllib.parse import urlparse
 
-SUPPORTED_WEB_TYPES = {'url', 'wikipedia', 'arxiv', 'rss'}
+from langchain_core.documents import Document as LCDocument
+from app.config import settings
+
+SUPPORTED_WEB_TYPES = {'url', 'wikipedia'}
+
+_MAX_REDIRECTS = 5
+
+
+class UnsafeUrlError(ValueError):
+    """Raised when a user-supplied URL resolves to a non-public/internal address."""
+
+
+def _is_public_ip(ip: str) -> bool:
+    addr = ipaddress.ip_address(ip)
+    return not (
+        addr.is_private or addr.is_loopback or addr.is_link_local
+        or addr.is_reserved or addr.is_multicast or addr.is_unspecified
+    )
+
+
+def _assert_safe_url(url: str) -> None:
+    """Blocks SSRF: only plain http(s) URLs resolving to public IPs are allowed.
+    Cloud metadata endpoints (169.254.169.254), the internal Docker network,
+    and loopback are all covered by the private/link-local/loopback checks."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https'):
+        raise UnsafeUrlError(f"Unsupported URL scheme: {parsed.scheme or '(none)'}")
+    if not parsed.hostname:
+        raise UnsafeUrlError("URL has no host")
+
+    try:
+        addrinfo = socket.getaddrinfo(parsed.hostname, None)
+    except socket.gaierror:
+        raise UnsafeUrlError(f"Could not resolve host: {parsed.hostname}")
+
+    for family, _, _, _, sockaddr in addrinfo:
+        ip = sockaddr[0]
+        if not _is_public_ip(ip):
+            raise UnsafeUrlError(f"URL resolves to a non-public address: {ip}")
 
 
 def load_web(source_type: str, url: str) -> tuple[list[LCDocument], str, str]:
@@ -10,10 +50,6 @@ def load_web(source_type: str, url: str) -> tuple[list[LCDocument], str, str]:
         return _load_url(url)
     if source_type == 'wikipedia':
         return _load_wikipedia(url)
-    if source_type == 'arxiv':
-        return _load_arxiv(url)
-    if source_type == 'rss':
-        return _load_rss(url)
     raise ValueError(f"Unsupported web source type: {source_type}")
 
 
@@ -22,19 +58,42 @@ def _load_url(url: str) -> tuple[list[LCDocument], str, str]:
     import trafilatura
 
     headers = {'User-Agent': 'Mozilla/5.0 (compatible; RAG-QA/1.0)'}
-    resp = requests.get(url, headers=headers, timeout=20)
-    resp.raise_for_status()
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+
+    # Validate + fetch manually hop-by-hop so every redirect target is also
+    # checked — requests' allow_redirects=True would let a validated URL
+    # redirect to an internal address after the fact (TOCTOU SSRF bypass).
+    current_url = url
+    for _ in range(_MAX_REDIRECTS):
+        _assert_safe_url(current_url)
+        resp = requests.get(current_url, headers=headers, timeout=20, stream=True, allow_redirects=False)
+        if resp.is_redirect or resp.is_permanent_redirect:
+            location = resp.headers.get('Location')
+            resp.close()
+            if not location:
+                raise UnsafeUrlError("Redirect without a Location header")
+            current_url = location if '://' in location else requests.compat.urljoin(current_url, location)
+            continue
+        resp.raise_for_status()
+        break
+    else:
+        raise UnsafeUrlError("Too many redirects")
+
+    content = resp.raw.read(max_bytes + 1, decode_content=True)
+    resp.close()
+    if len(content) > max_bytes:
+        raise ValueError(f"URL response exceeds the {settings.max_upload_mb}MB limit")
 
     # Pass raw bytes, not resp.text — requests' encoding guess is unreliable on
     # pages without an explicit charset; trafilatura/lxml detect it more robustly.
-    text = trafilatura.extract(resp.content, output_format='markdown', include_formatting=True, url=url)
-    meta = trafilatura.extract_metadata(resp.content)
+    text = trafilatura.extract(content, output_format='markdown', include_formatting=True, url=current_url)
+    meta = trafilatura.extract_metadata(content)
     auto_title = (meta.title if meta and meta.title else None) or url
 
     if not text:
         # Fallback for pages trafilatura can't confidently extract (e.g. JS-only shells)
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(resp.content, 'lxml')
+        soup = BeautifulSoup(content, 'lxml')
         for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe']):
             tag.decompose()
         main = soup.find('main') or soup.find('article') or soup.find('body') or soup
@@ -75,56 +134,3 @@ def _load_wikipedia(query: str) -> tuple[list[LCDocument], str, str]:
             ))
 
     return docs or [LCDocument(page_content=page.content, metadata={'page': 1})], 'wikipedia', page.title
-
-
-def _load_arxiv(input_str: str) -> tuple[list[LCDocument], str, str]:
-    import arxiv
-
-    # Accept full URL or bare ID like "2401.12345"
-    paper_id = input_str.strip()
-    for prefix in ['https://arxiv.org/abs/', 'http://arxiv.org/abs/', 'arxiv:']:
-        paper_id = paper_id.replace(prefix, '')
-
-    client = arxiv.Client()
-    results = list(client.results(arxiv.Search(id_list=[paper_id])))
-    if not results:
-        raise ValueError(f'arXiv paper not found: {input_str}')
-
-    paper = results[0]
-    content = (
-        f"Title: {paper.title}\n\n"
-        f"Authors: {', '.join(a.name for a in paper.authors)}\n\n"
-        f"Published: {paper.published.strftime('%Y-%m-%d')}\n\n"
-        f"Abstract:\n{paper.summary}\n\n"
-        f"Categories: {', '.join(paper.categories)}"
-    )
-    return (
-        [LCDocument(page_content=content, metadata={'page': 1, 'source': paper.entry_id})],
-        'arxiv',
-        paper.title,
-    )
-
-
-def _load_rss(url: str) -> tuple[list[LCDocument], str, str]:
-    import feedparser
-    from bs4 import BeautifulSoup
-
-    feed = feedparser.parse(url)
-    if feed.bozo and not feed.entries:
-        raise ValueError(f'Could not parse RSS feed: {url}')
-
-    docs = []
-    for i, entry in enumerate(feed.entries[:30], 1):
-        raw = (
-            entry.get('summary', '')
-            or (entry.get('content') or [{}])[0].get('value', '')
-        )
-        text = BeautifulSoup(raw, 'lxml').get_text(separator='\n', strip=True)
-        full = f"{entry.get('title', 'Untitled')}\n\n{text}"
-        docs.append(LCDocument(
-            page_content=full,
-            metadata={'page': i, 'source': entry.get('link', url)},
-        ))
-
-    auto_title = feed.feed.get('title', url)
-    return docs, 'rss', auto_title

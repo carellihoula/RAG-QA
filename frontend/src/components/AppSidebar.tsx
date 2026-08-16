@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/ModeToggle";
 import { QuotaBar } from "@/components/QuotaBar";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -78,17 +79,6 @@ function getInitials(name: string) {
     .slice(0, 2)
     .join("")
     .toUpperCase();
-}
-
-function useIsMobile() {
-  const [mobile, setMobile] = useState(() => window.innerWidth < 768);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
-    const handler = (e: MediaQueryListEvent) => setMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return mobile;
 }
 
 function useSidebarOpen(isMobile: boolean) {
@@ -369,35 +359,6 @@ function SidebarInner({
             />
           </button>
         </div>
-
-        {/* New conversation button */}
-        {isOpen ? (
-          <div className="px-3">
-            <button
-              onClick={() => navigate('/app')}
-              className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-sidebar-muted-foreground border border-sidebar-border hover:border-blue-500/40 hover:text-blue-500 hover:bg-blue-500/5 transition-all duration-150"
-            >
-              <MessageSquare className="h-3.5 w-3.5 flex-shrink-0" />
-              <span className="flex-1 text-left">New conversation</span>
-              <kbd className="text-[9px] font-mono border border-sidebar-border rounded px-0.5 opacity-50">⌘N</kbd>
-            </button>
-          </div>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex justify-center px-1">
-                <button
-                  onClick={() => navigate('/app')}
-                  aria-label="New conversation"
-                  className="h-8 w-8 rounded-lg flex items-center justify-center text-sidebar-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 border border-sidebar-border hover:border-blue-500/40 transition-colors"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                </button>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="right">New conversation</TooltipContent>
-          </Tooltip>
-        )}
 
         {/* Nav */}
         <nav className="flex-1 px-2" aria-label="Navigation principale">

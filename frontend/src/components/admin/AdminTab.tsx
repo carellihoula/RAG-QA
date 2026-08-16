@@ -110,7 +110,12 @@ function EditUserDialog({
       setIsActive(user.is_active);
       setIsAdmin(user.is_admin);
     }
-  }, [user]);
+    // Re-initialize only when switching to a different user, not on every
+    // re-render that hands us a new `user` object reference for the same
+    // one (e.g. a background refetch) — that would silently wipe unsaved
+    // edits while this modal is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   async function handleSave() {
     if (!user) return;

@@ -1,6 +1,6 @@
 export type SourceType =
-  | 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'csv' | 'txt' | 'md' | 'html'
-  | 'url' | 'wikipedia' | 'arxiv' | 'rss'
+  | 'pdf' | 'xlsx' | 'csv' | 'md' | 'html'
+  | 'url' | 'wikipedia'
 
 export interface Document {
   doc_id: string
